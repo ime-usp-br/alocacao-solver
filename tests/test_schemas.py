@@ -2,16 +2,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.schemas import (
-    Allocation,
     Config,
     Group,
-    Meta,
-    Room,
     SolveErrorResponse,
     SolveRequest,
     SolveResponse,
-    Suggestion,
-    Timeslot,
 )
 
 
@@ -59,7 +54,9 @@ def test_solve_request_valid() -> None:
     req = SolveRequest.model_validate(payload)
     assert req.meta.version == "1.0.0"
     assert req.meta.school_term_id == 42
-    assert str(req.meta.webhook_url) == "http://laravel-app/api/webhooks/allocation-result"
+    assert (
+        str(req.meta.webhook_url) == "http://laravel-app/api/webhooks/allocation-result"
+    )
     assert req.config.strict_capacity is False
     assert req.config.time_limit_seconds == 300
     assert len(req.timeslots) == 1
