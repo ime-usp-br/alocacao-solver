@@ -176,6 +176,31 @@ class TestScenarioBlockB:
         assert result.allocations == [(101, 1)]
         assert result.unassigned_groups == []
 
+    def test_pos_grad_cannot_use_b_room_case_insensitive(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="b09", capacity=50),
+            RoomData(id=2, name="B101", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Pos Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(block_b_restriction_for_pos=True)
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == []
+        assert result.unassigned_groups == [101]
+
 
 class TestScenarioStrictCapacity:
     """Cenário E: Capacidade strict impede alocação."""
@@ -203,6 +228,8 @@ class TestScenarioStrictCapacity:
         assert result.status in ("optimal", "feasible")
         assert result.allocations == []
         assert result.unassigned_groups == [101]
+        # O custo mínimo deve conter pelo menos a penalidade de unassigned
+        assert result.objective_value >= config.unassigned_penalty
 
     def test_relaxed_capacity_allows_overflow(self) -> None:
         timeslots = [
@@ -347,6 +374,123 @@ class TestScenarioInfeasible:
 
         assert result.status == "infeasible"
         assert result.allocations == []
+        assert result.unassigned_groups == []
+
+
+class TestScenarioSameTimeslotDifferentRooms:
+    """AC1: 2 grupos no mesmo horário, 2 salas. Nunca podem ocupar a mesma sala."""
+
+    def test_groups_never_share_same_room(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+            RoomData(id=2, name="B09", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert len(result.allocations) == 2
+        allocated_rooms = [room_id for (_, room_id) in result.allocations]
+        assert len(allocated_rooms) == len(set(allocated_rooms)), (
+            "Duas turmas no mesmo horário foram alocadas na mesma sala"
+        )
+        assert result.unassigned_groups == []
+
+
+class TestScenarioSameTimeslotSameRoomInfeasible:
+    """AC1 (fronteira): 2 grupos pré-alocados no mesmo horário e mesma sala -> infeasible."""
+
+    def test_two_groups_preassigned_same_room_same_timeslot_is_infeasible(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status == "infeasible"
+        assert result.allocations == []
+        assert result.unassigned_groups == []
+
+
+class TestScenarioContiguousTimeslotsSameRoom:
+    """AC1 (limites contíguos): horários encadeados devem permitir mesma sala."""
+
+    def test_contiguous_timeslots_allow_same_room(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="10:00"),
+            TimeslotData(id=1, day="seg", start="10:00", end="12:00"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[1],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert len(result.allocations) == 2
+        allocated_rooms = [room_id for (_, room_id) in result.allocations]
+        # Ambos devem conseguir a mesma sala porque os horários são contíguos
+        assert allocated_rooms == [1, 1]
         assert result.unassigned_groups == []
 
 
