@@ -14,7 +14,7 @@ from app.api.schemas import (
     SolveRequest,
     StopResponse,
 )
-from app.worker.processor import process_job
+from app.worker.tasks import process_job
 
 app = FastAPI(title="Alocacao Solver API")
 

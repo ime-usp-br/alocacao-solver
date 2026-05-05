@@ -9,7 +9,7 @@ from rq.job import Job
 
 from app.api.dependencies import get_redis_connection
 from app.api.routes import app
-from app.worker.processor import process_job
+from app.worker.tasks import process_job
 
 client = TestClient(app)
 
