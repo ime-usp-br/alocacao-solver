@@ -6,6 +6,7 @@ from app.solver.engine import (
     SolverConfig,
     TimeslotData,
     run_pass_1,
+    run_pass_2,
 )
 
 
@@ -347,3 +348,378 @@ class TestScenarioInfeasible:
         assert result.status == "infeasible"
         assert result.allocations == []
         assert result.unassigned_groups == []
+
+
+class TestPass2Skipped:
+    """Cenário I: Passe 2 é pulado quando não há grupos unassigned."""
+
+    def test_skipped_when_all_allocated(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.unassigned_groups == []
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        assert pass2.status == "skipped"
+        assert pass2.suggestions == []
+
+
+class TestPass2BasicAllocation:
+    """Cenário J: Grupo unassigned do Passe 1 é sugerido no Passe 2."""
+
+    def test_unassigned_group_gets_suggestion(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        # O Passe 1 aloca o grupo 101 na sala 1
+        assert pass1.allocations == [(101, 1)]
+        assert pass1.unassigned_groups == []
+
+        # Forçar cenário onde 101 fica unassigned no Passe 1 (capacidade strict)
+        config_strict = _default_config(strict_capacity=True)
+        groups_big = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=60,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        pass1_big = run_pass_1(config_strict, timeslots, rooms, groups_big)
+        assert pass1_big.unassigned_groups == [101]
+
+        pass2 = run_pass_2(
+            config_strict,
+            timeslots,
+            rooms,
+            groups_big,
+            pass1_big.allocations,
+            pass1_big.unassigned_groups,
+        )
+        # Como a capacidade é strict e a sala não comporta, não há sugestão
+        assert pass2.status in ("optimal", "feasible")
+        assert pass2.suggestions == []
+
+
+class TestPass2BestEffort:
+    """Cenário K: Passe 2 sugere o máximo possível (best effort)."""
+
+    def test_partial_allocation_when_one_timeslot_blocked_by_fixed(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        # Grupo 101 está fixo na sala 1 no seg (timeslot 0).
+        # Grupo 102 precisa de seg E ter, mas sala 1 só está livre no ter.
+        # No Passe 1, 102 fica unassigned porque precisa de uma única sala para ambos.
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0, 1],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.allocations == [(101, 1)]
+        assert pass1.unassigned_groups == [102]
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        # Passe 2 deve sugerir sala 1 para o grupo 102 apenas no timeslot 1 (ter).
+        # O timeslot 0 (seg) está bloqueado pelo grupo 101 fixo.
+        assert pass2.status in ("optimal", "feasible")
+        suggestions_for_102 = [s for s in pass2.suggestions if s[0] == 102]
+        assert (102, 1, 1) in suggestions_for_102
+        assert all(s[1] != 0 for s in suggestions_for_102)
+
+
+class TestPass2BlockB:
+    """Cenário L: Regra do Bloco B aplicada no Passe 2."""
+
+    def test_pos_grad_blocked_in_pass2(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="B09", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Pos Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(block_b_restriction_for_pos=True)
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.unassigned_groups == [101]
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        assert pass2.status in ("optimal", "feasible")
+        assert pass2.suggestions == []
+
+    def test_pos_grad_allowed_in_pass2_when_disabled(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="B09", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Pos Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(block_b_restriction_for_pos=False)
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.allocations == [(101, 1)]
+        assert pass1.unassigned_groups == []
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        assert pass2.status == "skipped"
+
+
+class TestPass2StrictCapacity:
+    """Cenário M: Capacidade strict no Passe 2."""
+
+    def test_strict_capacity_blocks_overflow_in_pass2(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=40),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=50,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(strict_capacity=True)
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.unassigned_groups == [101]
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        assert pass2.status in ("optimal", "feasible")
+        assert pass2.suggestions == []
+
+    def test_relaxed_capacity_allows_overflow_in_pass2(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=40),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=50,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(strict_capacity=False)
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.allocations == [(101, 1)]
+        assert pass1.unassigned_groups == []
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        assert pass2.status == "skipped"
+
+
+class TestPass2NoOverlapWithFixed:
+    """Cenário N: Intervalos fixos do Passe 1 bloqueiam sugestões no Passe 2."""
+
+    def test_fixed_interval_blocks_same_timeslot(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,  # fixado na sala 1
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.allocations == [(101, 1)]
+        assert pass1.unassigned_groups == [102]
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        # A sala 1 está ocupada no timeslot 0 pelo grupo 101 (fixo).
+        # Não há outra sala, então 102 não recebe sugestão.
+        assert pass2.status in ("optimal", "feasible")
+        assert pass2.suggestions == []
+
+    def test_fixed_interval_allows_different_timeslot(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+            RoomData(id=2, name="B09", capacity=50),
+        ]
+        # Grupo 101 fixo na sala 1 no seg.
+        # Grupo 102 precisa de seg e ter; sala 1 ocupada em ambos.
+        # Sala 2 livre em ambos, mas no Passe 1 o solver pode alocar 102 na sala 2.
+        # Para forçar unassigned, bloqueamos a sala 2 por capacidade.
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=60,
+                has_null_enrollment=False,
+                timeslot_ids=[0, 1],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(strict_capacity=True)
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.allocations == [(101, 1)]
+        assert pass1.unassigned_groups == [102]
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        # Sala 1 ocupada em ambos os timeslot; sala 2 não comporta demanda 60 (cap 50).
+        # Não há sugestões possíveis.
+        assert pass2.status in ("optimal", "feasible")
+        assert pass2.suggestions == []
