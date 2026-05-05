@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, HttpUrl
 # Input Schemas (Dispatch Request)
 # ---------------------------------------------------------------------------
 
+
 class Meta(BaseModel):
     version: str
     school_term_id: int
@@ -59,6 +60,7 @@ class SolveRequest(BaseModel):
 # Output Schemas (Webhook / Result)
 # ---------------------------------------------------------------------------
 
+
 class Allocation(BaseModel):
     group_id: int
     room_id: int
@@ -86,3 +88,14 @@ class SolveErrorResponse(BaseModel):
     status: Literal["error"]
     message: str
     trace: str
+
+
+class SolveAcceptedResponse(BaseModel):
+    job_id: str
+    status: Literal["queued"]
+    message: str
+
+
+class StopResponse(BaseModel):
+    job_id: str
+    message: str
