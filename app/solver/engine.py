@@ -1,0 +1,305 @@
+"""Motor matemático do Passe 1 (Alocação Estrita) usando OR-Tools CP-SAT."""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from ortools.sat.python import cp_model
+
+if TYPE_CHECKING:
+    import redis
+
+# ---------------------------------------------------------------------------
+# Constantes
+# ---------------------------------------------------------------------------
+
+# O CP-SAT não aceita floats na função objetivo.
+# Multiplicamos os pesos por este fator e trabalhamos com inteiros.
+SCALE = 1000
+
+
+# ---------------------------------------------------------------------------
+# Estruturas de dados internas (puros, sem dependência da API)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TimeslotData:
+    id: int
+    day: str
+    start: str
+    end: str
+
+
+@dataclass(frozen=True, slots=True)
+class RoomData:
+    id: int
+    name: str
+    capacity: int
+
+
+@dataclass(frozen=True, slots=True)
+class GroupData:
+    id: int
+    tiptur: str
+    demand: int
+    has_null_enrollment: bool
+    timeslot_ids: list[int]
+    preassigned_room_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class SolverConfig:
+    strict_capacity: bool
+    block_b_restriction_for_pos: bool
+    wasted_seats_weight: float
+    unassigned_penalty: float
+    time_limit_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class Pass1Result:
+    status: str  # "optimal" | "feasible" | "infeasible"
+    solve_time_seconds: float
+    objective_value: float
+    allocations: list[tuple[int, int]]  # (group_id, room_id)
+    unassigned_groups: list[int]  # group_ids
+    solutions_found: int
+
+
+# ---------------------------------------------------------------------------
+# Callback de interrupção (Soft Stop)
+# ---------------------------------------------------------------------------
+
+
+class StopAwareCallback(cp_model.CpSolverSolutionCallback):
+    """Callback que monitora sinais de parada no Redis e reporta progresso."""
+
+    def __init__(
+        self,
+        job_id: str,
+        redis_conn: redis.Redis,
+        time_limit_seconds: int,
+    ) -> None:
+        super().__init__()
+        self._job_id = job_id
+        self._redis = redis_conn
+        self._time_limit = time_limit_seconds
+        self._start_time = time.time()
+        self.solution_count = 0
+
+    def on_solution_callback(self) -> None:
+        self.solution_count += 1
+
+        elapsed = time.time() - self._start_time
+        progress = 15 + (elapsed / self._time_limit) * 70
+        progress = max(15, min(85, progress))
+
+        payload = {
+            "progress": round(progress, 2),
+            "message": f"Calculando ({self.solution_count} soluções parciais)...",
+        }
+        self._redis.setex(
+            f"progress:job_{self._job_id}",
+            3600,
+            str(payload),
+        )
+
+        if self._redis.exists(f"stop_job:{self._job_id}"):
+            self.StopSearch()
+
+
+# ---------------------------------------------------------------------------
+# Função principal do Passe 1
+# ---------------------------------------------------------------------------
+
+
+def run_pass_1(
+    config: SolverConfig,
+    timeslots: list[TimeslotData],
+    rooms: list[RoomData],
+    groups: list[GroupData],
+    callback: cp_model.CpSolverSolutionCallback | None = None,
+) -> Pass1Result:
+    """
+    Executa o Passe 1 de alocação estrita.
+
+    Cada grupo recebe exatamente uma sala (ou fica unassigned).
+    Conflitos de horário são resolvidos via AddNoOverlap com
+    NewOptionalIntervalVar para performance O(N log N).
+    """
+    from app.solver.utils import build_global_minutes
+
+    # -----------------------------------------------------------------------
+    # Pré-processamento de tempo
+    # -----------------------------------------------------------------------
+    timeslot_dicts = [
+        {"id": ts.id, "day": ts.day, "start": ts.start, "end": ts.end}
+        for ts in timeslots
+    ]
+    global_minutes = build_global_minutes(timeslot_dicts)
+
+    # -----------------------------------------------------------------------
+    # Modelo e Solver
+    # -----------------------------------------------------------------------
+    model = cp_model.CpModel()
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = config.time_limit_seconds
+
+    # -----------------------------------------------------------------------
+    # Variáveis de decisão
+    # -----------------------------------------------------------------------
+    X: dict[tuple[int, int], cp_model.IntVar] = {}
+    for g in groups:
+        for r in rooms:
+            X[(g.id, r.id)] = model.NewBoolVar(f"X_{g.id}_{r.id}")
+
+    U: dict[int, cp_model.IntVar] = {}
+    for g in groups:
+        U[g.id] = model.NewBoolVar(f"U_{g.id}")
+
+    # -----------------------------------------------------------------------
+    # Restrição 1: Atribuição única
+    # -----------------------------------------------------------------------
+    for g in groups:
+        model.Add(sum(X[(g.id, r.id)] for r in rooms) + U[g.id] == 1)
+
+    # -----------------------------------------------------------------------
+    # Restrição 2: Pré-alocação (trava manual)
+    # -----------------------------------------------------------------------
+    for g in groups:
+        if g.preassigned_room_id is not None:
+            model.Add(X[(g.id, g.preassigned_room_id)] == 1)
+
+    # -----------------------------------------------------------------------
+    # Restrição 3: Conflitos de horário (AddNoOverlap)
+    # -----------------------------------------------------------------------
+    room_intervals: dict[int, list[cp_model.IntervalVar]] = {r.id: [] for r in rooms}
+
+    for g in groups:
+        for r in rooms:
+            for ts_id in g.timeslot_ids:
+                start_global, end_global = global_minutes[ts_id]
+                size = end_global - start_global
+
+                interval = model.NewOptionalIntervalVar(
+                    start=start_global,
+                    size=size,
+                    end=end_global,
+                    is_present=X[(g.id, r.id)],
+                    name=f"interval_g{g.id}_r{r.id}_t{ts_id}",
+                )
+                room_intervals[r.id].append(interval)
+
+    for r in rooms:
+        if room_intervals[r.id]:
+            model.AddNoOverlap(room_intervals[r.id])
+
+    # -----------------------------------------------------------------------
+    # Restrição 4: Capacidade da sala
+    # -----------------------------------------------------------------------
+    if config.strict_capacity:
+        for g in groups:
+            if not g.has_null_enrollment:
+                for r in rooms:
+                    if r.capacity < g.demand:
+                        # Sala é muito pequena: forçar X == 0
+                        model.Add(X[(g.id, r.id)] == 0)
+
+    # -----------------------------------------------------------------------
+    # Restrição 5: Regra do Bloco B
+    # -----------------------------------------------------------------------
+    if config.block_b_restriction_for_pos:
+        for g in groups:
+            if g.tiptur.lower() == "pos graduacao":
+                for r in rooms:
+                    if r.name.strip().upper().startswith("B"):
+                        model.Add(X[(g.id, r.id)] == 0)
+
+    # -----------------------------------------------------------------------
+    # Função Objetivo (com SCALE para evitar floats no CP-SAT)
+    # -----------------------------------------------------------------------
+    unassigned_penalty_int = int(config.unassigned_penalty * SCALE)
+    wasted_seats_weight_int = int(config.wasted_seats_weight * SCALE)
+
+    cost_unassigned = sum(U[g.id] * unassigned_penalty_int for g in groups)
+
+    cost_waste = 0
+    for g in groups:
+        for r in rooms:
+            waste = max(0, r.capacity - g.demand)
+            if waste > 0:
+                cost_waste += X[(g.id, r.id)] * waste * wasted_seats_weight_int
+
+    model.Minimize(cost_unassigned + cost_waste)
+
+    # -----------------------------------------------------------------------
+    # Resolver
+    # -----------------------------------------------------------------------
+    start_solve = time.time()
+    if callback is not None:
+        status = solver.Solve(model, callback)
+    else:
+        status = solver.Solve(model)
+    solve_time = time.time() - start_solve
+
+    # -----------------------------------------------------------------------
+    # Mapear status
+    # -----------------------------------------------------------------------
+    if status == cp_model.OPTIMAL:
+        result_status = "optimal"
+    elif status == cp_model.FEASIBLE:
+        result_status = "feasible"
+    elif status == cp_model.INFEASIBLE:
+        result_status = "infeasible"
+    else:
+        raise SolverException(
+            f"Status inesperado do CP-SAT: {status} ({solver.StatusName(status)})"
+        )
+
+    if result_status == "infeasible":
+        return Pass1Result(
+            status="infeasible",
+            solve_time_seconds=solve_time,
+            objective_value=0.0,
+            allocations=[],
+            unassigned_groups=[],
+            solutions_found=0,
+        )
+
+    # -----------------------------------------------------------------------
+    # Extrair resultados
+    # -----------------------------------------------------------------------
+    allocations: list[tuple[int, int]] = []
+    unassigned_groups: list[int] = []
+
+    for g in groups:
+        assigned = False
+        for r in rooms:
+            if solver.Value(X[(g.id, r.id)]) == 1:
+                allocations.append((g.id, r.id))
+                assigned = True
+                break
+        if not assigned:
+            unassigned_groups.append(g.id)
+
+    raw_objective = solver.ObjectiveValue() if hasattr(solver, "ObjectiveValue") else 0
+    # Desescalar para retornar valor próximo ao original
+    objective_value = float(raw_objective) / SCALE
+
+    solutions_found = callback.solution_count if callback else 1
+
+    return Pass1Result(
+        status=result_status,
+        solve_time_seconds=solve_time,
+        objective_value=objective_value,
+        allocations=allocations,
+        unassigned_groups=unassigned_groups,
+        solutions_found=solutions_found,
+    )
+
+
+class SolverException(Exception):
+    """Exceção levantada quando o solver retorna um estado inesperado."""
