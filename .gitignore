@@ -1,0 +1,24 @@
+# Ambiente
+.env
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Ferramentas
+.pytest_cache/
+.ruff_cache/
+
+# IDEs
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+/tmp

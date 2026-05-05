@@ -1,0 +1,29 @@
+[project]
+name = "alocacao-solver"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "ayrtonnotrya",email = "ayrtondouglas@usp.br"}
+]
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "fastapi (>=0.136.1,<0.137.0)",
+    "uvicorn (>=0.46.0,<0.47.0)",
+    "redis (>=7.4.0,<8.0.0)",
+    "rq (>=2.8.0,<3.0.0)",
+    "ortools (>=9.15.6755,<10.0.0)",
+    "pydantic (>=2.13.3,<3.0.0)",
+    "httpx (>=0.28.1,<0.29.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.3,<10.0.0)",
+    "ruff (>=0.15.12,<0.16.0)"
+]
