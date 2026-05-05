@@ -109,12 +109,20 @@ def _send_webhook(url: str, payload: dict[str, Any]) -> None:
     """
     Dispara o webhook para o Laravel.
 
-    Falhas de rede são isoladas via try/except para não contaminar
-    o fluxo principal do worker.
+    Falhas de rede e erros HTTP (4xx/5xx) são isoladas via try/except
+    para não contaminar o fluxo principal do worker.
     """
     try:
         with httpx.Client(timeout=10.0) as client:
-            client.post(url, json=payload)
+            response = client.post(url, json=payload)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "Webhook retornou HTTP %s para %s: %s",
+            exc.response.status_code,
+            url,
+            exc.response.text,
+        )
     except httpx.RequestError:
         logger.warning("Falha de rede ao enviar webhook para %s.", url)
 
