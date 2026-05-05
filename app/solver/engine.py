@@ -69,6 +69,14 @@ class Pass1Result:
     solutions_found: int
 
 
+@dataclass(frozen=True, slots=True)
+class Pass2Result:
+    status: str  # "optimal" | "feasible" | "infeasible" | "skipped"
+    solve_time_seconds: float
+    suggestions: list[tuple[int, int, int]]  # (group_id, timeslot_id, room_id)
+    solutions_found: int
+
+
 # ---------------------------------------------------------------------------
 # Callback de interrupção (Soft Stop)
 # ---------------------------------------------------------------------------
@@ -82,11 +90,15 @@ class StopAwareCallback(cp_model.CpSolverSolutionCallback):
         job_id: str,
         redis_conn: redis.Redis,
         time_limit_seconds: int,
+        progress_offset: float = 15.0,
+        progress_scale: float = 70.0,
     ) -> None:
         super().__init__()
         self._job_id = job_id
         self._redis = redis_conn
         self._time_limit = time_limit_seconds
+        self._progress_offset = progress_offset
+        self._progress_scale = progress_scale
         self._start_time = time.time()
         self.solution_count = 0
 
@@ -94,8 +106,13 @@ class StopAwareCallback(cp_model.CpSolverSolutionCallback):
         self.solution_count += 1
 
         elapsed = time.time() - self._start_time
-        progress = 15 + (elapsed / self._time_limit) * 70
-        progress = max(15, min(85, progress))
+        progress = (
+            self._progress_offset + (elapsed / self._time_limit) * self._progress_scale
+        )
+        progress = max(
+            self._progress_offset,
+            min(self._progress_offset + self._progress_scale, progress),
+        )
 
         payload = {
             "progress": round(progress, 2),
@@ -297,6 +314,207 @@ def run_pass_1(
         objective_value=objective_value,
         allocations=allocations,
         unassigned_groups=unassigned_groups,
+        solutions_found=solutions_found,
+    )
+
+
+def run_pass_2(
+    config: SolverConfig,
+    timeslots: list[TimeslotData],
+    rooms: list[RoomData],
+    groups: list[GroupData],
+    pass1_allocations: list[tuple[int, int]],
+    pass1_unassigned_groups: list[int],
+    callback: cp_model.CpSolverSolutionCallback | None = None,
+) -> Pass2Result:
+    """
+    Executa o Passe 2 de sugestão de quebras de horários (Best Effort).
+
+    Grupos que ficaram unassigned no Passe 1 podem ser alocados em salas
+    diferentes para cada timeslot. O modelo maximiza o número de alocações
+    e, entre soluções equivalentes, minimiza o desperdício de assentos.
+    """
+    from app.solver.utils import build_global_minutes
+
+    if not pass1_unassigned_groups:
+        return Pass2Result(
+            status="skipped",
+            solve_time_seconds=0.0,
+            suggestions=[],
+            solutions_found=0,
+        )
+
+    # -----------------------------------------------------------------------
+    # Pré-processamento de tempo
+    # -----------------------------------------------------------------------
+    timeslot_dicts = [
+        {"id": ts.id, "day": ts.day, "start": ts.start, "end": ts.end}
+        for ts in timeslots
+    ]
+    global_minutes = build_global_minutes(timeslot_dicts)
+
+    # -----------------------------------------------------------------------
+    # Mapeamentos rápidos
+    # -----------------------------------------------------------------------
+    group_by_id: dict[int, GroupData] = {g.id: g for g in groups}
+    g_unassigned = [
+        group_by_id[g_id] for g_id in pass1_unassigned_groups if g_id in group_by_id
+    ]
+
+    # -----------------------------------------------------------------------
+    # Modelo e Solver
+    # -----------------------------------------------------------------------
+    model = cp_model.CpModel()
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = config.time_limit_seconds
+
+    # -----------------------------------------------------------------------
+    # Intervalos FIXOS do Passe 1 (ocupam tempo fisicamente)
+    # -----------------------------------------------------------------------
+    room_intervals: dict[int, list[cp_model.IntervalVar]] = {r.id: [] for r in rooms}
+
+    for g_id, r_id in pass1_allocations:
+        g = group_by_id.get(g_id)
+        if g is None:
+            continue
+        for ts_id in g.timeslot_ids:
+            start_global, end_global = global_minutes[ts_id]
+            size = end_global - start_global
+            fixed_interval = model.NewIntervalVar(
+                start=start_global,
+                size=size,
+                end=end_global,
+                name=f"fixed_g{g_id}_r{r_id}_t{ts_id}",
+            )
+            room_intervals[r_id].append(fixed_interval)
+
+    # -----------------------------------------------------------------------
+    # Variáveis de decisão Y[g, t, r]
+    # -----------------------------------------------------------------------
+    Y: dict[tuple[int, int, int], cp_model.IntVar] = {}
+    for g in g_unassigned:
+        for ts_id in g.timeslot_ids:
+            for r in rooms:
+                Y[(g.id, ts_id, r.id)] = model.NewBoolVar(f"Y_{g.id}_{ts_id}_{r.id}")
+
+    # -----------------------------------------------------------------------
+    # Restrição 1: No máximo 1 sala por timeslot (Best Effort)
+    # -----------------------------------------------------------------------
+    for g in g_unassigned:
+        for ts_id in g.timeslot_ids:
+            model.Add(sum(Y[(g.id, ts_id, r.id)] for r in rooms) <= 1)
+
+    # -----------------------------------------------------------------------
+    # Restrição 2: AddNoOverlap (fixos + opcionais do Passe 2)
+    # -----------------------------------------------------------------------
+    for g in g_unassigned:
+        for r in rooms:
+            for ts_id in g.timeslot_ids:
+                start_global, end_global = global_minutes[ts_id]
+                size = end_global - start_global
+                optional_interval = model.NewOptionalIntervalVar(
+                    start=start_global,
+                    size=size,
+                    end=end_global,
+                    is_present=Y[(g.id, ts_id, r.id)],
+                    name=f"opt_g{g.id}_r{r.id}_t{ts_id}",
+                )
+                room_intervals[r.id].append(optional_interval)
+
+    for r in rooms:
+        if room_intervals[r.id]:
+            model.AddNoOverlap(room_intervals[r.id])
+
+    # -----------------------------------------------------------------------
+    # Restrição 3: Capacidade da sala
+    # -----------------------------------------------------------------------
+    if config.strict_capacity:
+        for g in g_unassigned:
+            if not g.has_null_enrollment:
+                for r in rooms:
+                    if r.capacity < g.demand:
+                        for ts_id in g.timeslot_ids:
+                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
+
+    # -----------------------------------------------------------------------
+    # Restrição 4: Regra do Bloco B
+    # -----------------------------------------------------------------------
+    if config.block_b_restriction_for_pos:
+        for g in g_unassigned:
+            if g.tiptur.lower() == "pos graduacao":
+                for r in rooms:
+                    if r.name.strip().upper().startswith("B"):
+                        for ts_id in g.timeslot_ids:
+                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
+
+    # -----------------------------------------------------------------------
+    # Função Objetivo: Maximizar alocações (via recompensa gigante)
+    # -----------------------------------------------------------------------
+    wasted_seats_weight_int = int(config.wasted_seats_weight * SCALE)
+    # Recompensa deve ser muito maior que qualquer custo de waste possível
+    max_possible_waste = max(r.capacity for r in rooms) * wasted_seats_weight_int
+    reward = max_possible_waste + (10_000_000 * SCALE)
+
+    cost = 0
+    for g in g_unassigned:
+        for ts_id in g.timeslot_ids:
+            for r in rooms:
+                waste = max(0, r.capacity - g.demand)
+                # Minimizar (waste - reward) quando Y == 1
+                # Como reward >> waste, isso efetivamente maximiza Y
+                coeff = (waste * wasted_seats_weight_int) - reward
+                cost += Y[(g.id, ts_id, r.id)] * coeff
+
+    model.Minimize(cost)
+
+    # -----------------------------------------------------------------------
+    # Resolver
+    # -----------------------------------------------------------------------
+    start_solve = time.time()
+    if callback is not None:
+        status = solver.Solve(model, callback)
+    else:
+        status = solver.Solve(model)
+    solve_time = time.time() - start_solve
+
+    # -----------------------------------------------------------------------
+    # Mapear status
+    # -----------------------------------------------------------------------
+    if status == cp_model.OPTIMAL:
+        result_status = "optimal"
+    elif status == cp_model.FEASIBLE:
+        result_status = "feasible"
+    elif status == cp_model.INFEASIBLE:
+        result_status = "infeasible"
+    else:
+        raise SolverException(
+            f"Status inesperado do CP-SAT no Passe 2: {status} ({solver.StatusName(status)})"
+        )
+
+    if result_status == "infeasible":
+        return Pass2Result(
+            status="infeasible",
+            solve_time_seconds=solve_time,
+            suggestions=[],
+            solutions_found=0,
+        )
+
+    # -----------------------------------------------------------------------
+    # Extrair sugestões
+    # -----------------------------------------------------------------------
+    suggestions: list[tuple[int, int, int]] = []
+    for g in g_unassigned:
+        for ts_id in g.timeslot_ids:
+            for r in rooms:
+                if solver.Value(Y[(g.id, ts_id, r.id)]) == 1:
+                    suggestions.append((g.id, ts_id, r.id))
+
+    solutions_found = callback.solution_count if callback else 1
+
+    return Pass2Result(
+        status=result_status,
+        solve_time_seconds=solve_time,
+        suggestions=suggestions,
         solutions_found=solutions_found,
     )
 
