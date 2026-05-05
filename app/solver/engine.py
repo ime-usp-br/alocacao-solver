@@ -4,12 +4,8 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from ortools.sat.python import cp_model
-
-if TYPE_CHECKING:
-    import redis
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -75,57 +71,6 @@ class Pass2Result:
     solve_time_seconds: float
     suggestions: list[tuple[int, int, int]]  # (group_id, timeslot_id, room_id)
     solutions_found: int
-
-
-# ---------------------------------------------------------------------------
-# Callback de interrupção (Soft Stop)
-# ---------------------------------------------------------------------------
-
-
-class StopAwareCallback(cp_model.CpSolverSolutionCallback):
-    """Callback que monitora sinais de parada no Redis e reporta progresso."""
-
-    def __init__(
-        self,
-        job_id: str,
-        redis_conn: redis.Redis,
-        time_limit_seconds: int,
-        progress_offset: float = 15.0,
-        progress_scale: float = 70.0,
-    ) -> None:
-        super().__init__()
-        self._job_id = job_id
-        self._redis = redis_conn
-        self._time_limit = time_limit_seconds
-        self._progress_offset = progress_offset
-        self._progress_scale = progress_scale
-        self._start_time = time.time()
-        self.solution_count = 0
-
-    def on_solution_callback(self) -> None:
-        self.solution_count += 1
-
-        elapsed = time.time() - self._start_time
-        progress = (
-            self._progress_offset + (elapsed / self._time_limit) * self._progress_scale
-        )
-        progress = max(
-            self._progress_offset,
-            min(self._progress_offset + self._progress_scale, progress),
-        )
-
-        payload = {
-            "progress": round(progress, 2),
-            "message": f"Calculando ({self.solution_count} soluções parciais)...",
-        }
-        self._redis.setex(
-            f"progress:job_{self._job_id}",
-            3600,
-            str(payload),
-        )
-
-        if self._redis.exists(f"stop_job:{self._job_id}"):
-            self.StopSearch()
 
 
 # ---------------------------------------------------------------------------

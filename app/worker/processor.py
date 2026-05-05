@@ -19,13 +19,13 @@ from app.api.schemas import (
     Suggestion,
     Timeslot,
 )
+from app.solver.callbacks import StopAwareCallback
 from app.solver.engine import (
     GroupData,
     Pass1Result,
     Pass2Result,
     RoomData,
     SolverConfig,
-    StopAwareCallback,
     TimeslotData,
     run_pass_1,
     run_pass_2,
@@ -85,10 +85,8 @@ def _build_solve_response(
     job_id: str,
     pass1: Pass1Result,
     pass2: Pass2Result,
+    global_status: str,
 ) -> dict[str, Any]:
-    # Status global: se o usuário parou no Pass 1, mantém stopped; senão, do Pass 1.
-    global_status = pass1.status
-
     allocations = [
         Allocation(group_id=g_id, room_id=r_id) for g_id, r_id in pass1.allocations
     ]
@@ -173,7 +171,7 @@ def process_job(job_data: dict[str, Any]) -> None:
                 redis_conn=redis_conn,
                 time_limit_seconds=remaining,
                 progress_offset=70.0,
-                progress_scale=20.0,
+                progress_scale=15.0,
             )
 
             pass2_config = SolverConfig(
@@ -204,8 +202,23 @@ def process_job(job_data: dict[str, Any]) -> None:
         # ------------------------------------------------------------------
         # Montar resposta e entregar
         # ------------------------------------------------------------------
-        response_payload = _build_solve_response(job_id, pass1, pass2)
+        stopped = callback.was_stopped
+        if pass1.unassigned_groups:
+            stopped = stopped or pass2_callback.was_stopped
+
+        global_status = "stopped" if stopped else pass1.status
+        response_payload = _build_solve_response(job_id, pass1, pass2, global_status)
         _save_result_to_redis(redis_conn, job_id, response_payload)
+
+        # Marca 100% no progresso assim que o solver finaliza.
+        redis_conn.setex(
+            f"progress:job_{job_id}",
+            3600,
+            json.dumps(
+                {"progress": 100.0, "message": "Otimização concluída com sucesso."}
+            ),
+        )
+
         _send_webhook(webhook_url, response_payload)
 
     except Exception as exc:
