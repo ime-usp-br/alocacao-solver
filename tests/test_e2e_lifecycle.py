@@ -24,6 +24,7 @@ FULL_PAYLOAD: dict[str, Any] = {
         "version": "1.0.0",
         "school_term_id": 42,
         "webhook_url": WEBHOOK_URL,
+        "progress_webhook_url": "http://laravel-app/api/webhooks/allocation-progress",
     },
     "config": {
         "strict_capacity": False,
@@ -91,6 +92,9 @@ class TestE2ELifecycle:
         """Fluxo completo: dispatch -> worker -> Redis -> webhook de sucesso."""
         with respx.mock:
             route = respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+            respx.post(FULL_PAYLOAD["meta"]["progress_webhook_url"]).mock(
+                return_value=Response(200)
+            )
 
             # 1. Dispatch
             response = e2e_client.post("/api/v1/solve", json=FULL_PAYLOAD)
@@ -159,6 +163,9 @@ class TestE2ELifecycle:
         """Falha no webhook (HTTP 500) não deve impedir a persistência no Redis."""
         with respx.mock:
             route = respx.post(WEBHOOK_URL).mock(return_value=Response(500))
+            respx.post(FULL_PAYLOAD["meta"]["progress_webhook_url"]).mock(
+                return_value=Response(200)
+            )
 
             response = e2e_client.post("/api/v1/solve", json=FULL_PAYLOAD)
             job_id = response.json()["job_id"]
@@ -186,6 +193,9 @@ class TestE2ELifecycle:
         """Soft Stop: grava chave no Redis antes do worker iniciar e valida interrupção."""
         with respx.mock:
             route = respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+            respx.post(FULL_PAYLOAD["meta"]["progress_webhook_url"]).mock(
+                return_value=Response(200)
+            )
 
             # 1. Enfileira job
             response = e2e_client.post("/api/v1/solve", json=FULL_PAYLOAD)

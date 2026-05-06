@@ -27,6 +27,7 @@ SOLVE_PAYLOAD = {
         "version": "1.0.0",
         "school_term_id": 42,
         "webhook_url": "http://laravel-app/api/webhooks/allocation-result",
+        "progress_webhook_url": "http://laravel-app/api/webhooks/allocation-progress",
     },
     "config": {
         "strict_capacity": False,

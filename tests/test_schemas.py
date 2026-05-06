@@ -16,6 +16,7 @@ def test_solve_request_valid() -> None:
             "version": "1.0.0",
             "school_term_id": 42,
             "webhook_url": "http://laravel-app/api/webhooks/allocation-result",
+            "progress_webhook_url": "http://laravel-app/api/webhooks/allocation-progress",
         },
         "config": {
             "strict_capacity": False,
@@ -74,6 +75,7 @@ def test_solve_request_invalid_missing_field() -> None:
             "version": "1.0.0",
             "school_term_id": 42,
             "webhook_url": "http://laravel-app/api/webhooks/allocation-result",
+            "progress_webhook_url": "http://laravel-app/api/webhooks/allocation-progress",
         },
         "config": {
             "strict_capacity": False,

@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import httpx
 from ortools.sat.python import cp_model
 
 if TYPE_CHECKING:
     import redis
+
+logger = logging.getLogger(__name__)
 
 
 class StopAwareCallback(cp_model.CpSolverSolutionCallback):
@@ -20,6 +25,7 @@ class StopAwareCallback(cp_model.CpSolverSolutionCallback):
         job_id: str,
         redis_conn: redis.Redis,
         time_limit_seconds: int,
+        progress_webhook_url: str | None = None,
         progress_offset: float = 15.0,
         progress_scale: float = 70.0,
         min_report_interval_seconds: float = 1.0,
@@ -29,6 +35,7 @@ class StopAwareCallback(cp_model.CpSolverSolutionCallback):
         self._job_id = job_id
         self._redis = redis_conn
         self._time_limit = time_limit_seconds
+        self._progress_webhook_url = progress_webhook_url
         self._progress_offset = progress_offset
         self._progress_scale = progress_scale
         self._min_report_interval = min_report_interval_seconds
@@ -67,6 +74,7 @@ class StopAwareCallback(cp_model.CpSolverSolutionCallback):
         )
 
         payload = {
+            "job_id": self._job_id,
             "progress": round(progress, 2),
             "message": (
                 "Otimizando distribuição "
@@ -79,6 +87,30 @@ class StopAwareCallback(cp_model.CpSolverSolutionCallback):
             3600,
             json.dumps(payload),
         )
+
+        if self._progress_webhook_url:
+            thread = threading.Thread(
+                target=self._send_progress_webhook,
+                args=(payload,),
+                daemon=True,
+            )
+            thread.start()
+
+    def _send_progress_webhook(self, payload: dict[str, Any]) -> None:
+        try:
+            response = httpx.post(
+                self._progress_webhook_url,
+                json=payload,
+                timeout=3.0,
+            )
+            if response.status_code >= 400:
+                logger.warning(
+                    "Webhook de progresso retornou %s para job %s",
+                    response.status_code,
+                    self._job_id,
+                )
+        except httpx.RequestError:
+            pass
 
     def _check_stop(self) -> None:
         if self._redis.exists(f"stop_job:{self._job_id}"):
