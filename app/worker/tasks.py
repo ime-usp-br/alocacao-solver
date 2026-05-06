@@ -54,6 +54,7 @@ def process_job(job_data: dict[str, Any]) -> None:
         rooms = _to_internal_rooms(request.rooms)
         groups = _to_internal_groups(request.groups)
         webhook_url = str(request.meta.webhook_url)
+        progress_webhook_url = str(request.meta.progress_webhook_url)
 
         # ------------------------------------------------------------------
         # Pass 1
@@ -62,6 +63,7 @@ def process_job(job_data: dict[str, Any]) -> None:
             job_id=job_id,
             redis_conn=redis_conn,
             time_limit_seconds=config.time_limit_seconds,
+            progress_webhook_url=progress_webhook_url,
             progress_offset=15.0,
             progress_scale=55.0,
         )
@@ -80,6 +82,7 @@ def process_job(job_data: dict[str, Any]) -> None:
                 job_id=job_id,
                 redis_conn=redis_conn,
                 time_limit_seconds=remaining,
+                progress_webhook_url=progress_webhook_url,
                 progress_offset=70.0,
                 progress_scale=15.0,
             )

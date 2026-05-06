@@ -21,6 +21,7 @@ def _make_valid_payload(job_id: str = "test-job") -> dict[str, Any]:
             "version": "1.0.0",
             "school_term_id": 42,
             "webhook_url": WEBHOOK_URL,
+            "progress_webhook_url": "http://laravel-app/api/webhooks/allocation-progress",
         },
         "config": {
             "strict_capacity": False,

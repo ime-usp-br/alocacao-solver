@@ -3,6 +3,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from app.solver.callbacks import StopAwareCallback
@@ -114,3 +115,72 @@ class TestStopAwareCallback:
         assert "Otimizando distribuição" in last_payload["message"]
         assert "Isto pode demorar alguns minutos." in last_payload["message"]
         assert "Soluções encontradas: 2" in last_payload["message"]
+
+    def test_progress_webhook_sent_in_background_thread(
+        self, fake_redis: MagicMock
+    ) -> None:
+        cb = StopAwareCallback(
+            job_id="test-6",
+            redis_conn=fake_redis,
+            time_limit_seconds=100,
+            progress_webhook_url="http://laravel.test/progress",
+            min_report_interval_seconds=0.0,
+            report_every_n_solutions=1,
+        )
+        fake_redis.exists.return_value = 0
+
+        with patch.object(cb, "StopSearch"):
+            with patch("app.solver.callbacks.threading.Thread") as mock_thread:
+                cb.on_solution_callback()
+
+        mock_thread.assert_called_once()
+        assert mock_thread.call_args[1]["daemon"] is True
+        assert mock_thread.call_args[1]["target"] == cb._send_progress_webhook
+        mock_thread.return_value.start.assert_called_once()
+
+    def test_progress_webhook_failure_is_suppressed(
+        self, fake_redis: MagicMock
+    ) -> None:
+        cb = StopAwareCallback(
+            job_id="test-7",
+            redis_conn=fake_redis,
+            time_limit_seconds=100,
+            progress_webhook_url="http://laravel.test/progress",
+            min_report_interval_seconds=0.0,
+            report_every_n_solutions=1,
+        )
+        fake_redis.exists.return_value = 0
+
+        with patch.object(cb, "StopSearch"):
+            with patch(
+                "app.solver.callbacks.httpx.post",
+                side_effect=httpx.RequestError("fail"),
+            ):
+                # Não deve levantar exceção
+                cb.on_solution_callback()
+
+        assert cb.solution_count == 1
+
+    def test_progress_webhook_logs_on_4xx_5xx(self, fake_redis: MagicMock) -> None:
+        cb = StopAwareCallback(
+            job_id="test-8",
+            redis_conn=fake_redis,
+            time_limit_seconds=100,
+            progress_webhook_url="http://laravel.test/progress",
+            min_report_interval_seconds=0.0,
+            report_every_n_solutions=1,
+        )
+        fake_redis.exists.return_value = 0
+
+        fake_response = MagicMock()
+        fake_response.status_code = 500
+
+        with patch.object(cb, "StopSearch"):
+            with patch(
+                "app.solver.callbacks.httpx.post", return_value=fake_response
+            ):
+                with patch("app.solver.callbacks.logger") as mock_logger:
+                    cb.on_solution_callback()
+
+        mock_logger.warning.assert_called_once()
+        assert "500" in str(mock_logger.warning.call_args)

@@ -12,6 +12,7 @@ class Meta(BaseModel):
     version: str
     school_term_id: int
     webhook_url: HttpUrl
+    progress_webhook_url: HttpUrl
 
 
 class Config(BaseModel):
