@@ -18,6 +18,9 @@ class Meta(BaseModel):
 class Config(BaseModel):
     strict_capacity: bool
     block_b_restriction_for_pos: bool
+    block_a_restriction_for_freshmen: bool
+    undergrad_in_block_a_penalty: float = Field(..., ge=0)
+    pos_in_block_b_penalty: float = Field(..., ge=0)
     wasted_seats_weight: float = Field(..., ge=0)
     unassigned_penalty: float = Field(..., ge=0)
     time_limit_seconds: int = Field(..., ge=1)
@@ -45,6 +48,7 @@ class Group(BaseModel):
     tiptur: str
     demand: int = Field(..., ge=0)
     has_null_enrollment: bool
+    is_freshmen: bool
     timeslot_ids: list[int]
     preassigned_room_id: int | None
     same_room_cohort: str | None = None

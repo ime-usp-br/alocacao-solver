@@ -33,6 +33,9 @@ def _to_internal_config(config: Any) -> SolverConfig:
     return SolverConfig(
         strict_capacity=config.config.strict_capacity,
         block_b_restriction_for_pos=config.config.block_b_restriction_for_pos,
+        block_a_restriction_for_freshmen=config.config.block_a_restriction_for_freshmen,
+        undergrad_in_block_a_penalty=config.config.undergrad_in_block_a_penalty,
+        pos_in_block_b_penalty=config.config.pos_in_block_b_penalty,
         wasted_seats_weight=config.config.wasted_seats_weight,
         unassigned_penalty=config.config.unassigned_penalty,
         time_limit_seconds=config.config.time_limit_seconds,
@@ -69,6 +72,7 @@ def _to_internal_groups(groups: list[Group]) -> list[GroupData]:
             tiptur=g.tiptur,
             demand=g.demand,
             has_null_enrollment=g.has_null_enrollment,
+            is_freshmen=g.is_freshmen,
             timeslot_ids=g.timeslot_ids,
             preassigned_room_id=g.preassigned_room_id,
             same_room_cohort=g.same_room_cohort,
