@@ -48,6 +48,7 @@ def test_solve_request_valid() -> None:
                 "has_null_enrollment": False,
                 "timeslot_ids": [0],
                 "preassigned_room_id": None,
+                "same_room_cohort": None,
             },
         ],
     }
@@ -132,6 +133,7 @@ def test_solve_request_invalid_bad_type() -> None:
                 "has_null_enrollment": False,
                 "timeslot_ids": [0],
                 "preassigned_room_id": None,
+                "same_room_cohort": None,
             },
         ],
     }
@@ -205,5 +207,6 @@ def test_group_invalid_type() -> None:
                 "has_null_enrollment": False,
                 "timeslot_ids": [0],
                 "preassigned_room_id": None,
+                "same_room_cohort": None,
             }
         )

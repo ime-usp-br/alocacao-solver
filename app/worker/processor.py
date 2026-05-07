@@ -71,6 +71,7 @@ def _to_internal_groups(groups: list[Group]) -> list[GroupData]:
             has_null_enrollment=g.has_null_enrollment,
             timeslot_ids=g.timeslot_ids,
             preassigned_room_id=g.preassigned_room_id,
+            same_room_cohort=g.same_room_cohort,
         )
         for g in groups
     ]

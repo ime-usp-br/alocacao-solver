@@ -59,6 +59,7 @@ SOLVE_PAYLOAD = {
             "has_null_enrollment": False,
             "timeslot_ids": [0],
             "preassigned_room_id": None,
+            "same_room_cohort": None,
         },
     ],
 }

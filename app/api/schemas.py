@@ -47,6 +47,7 @@ class Group(BaseModel):
     has_null_enrollment: bool
     timeslot_ids: list[int]
     preassigned_room_id: int | None
+    same_room_cohort: str | None = None
 
 
 class SolveRequest(BaseModel):
