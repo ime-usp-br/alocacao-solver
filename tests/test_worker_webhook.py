@@ -51,6 +51,7 @@ def _make_valid_payload(job_id: str = "test-job") -> dict[str, Any]:
                 "has_null_enrollment": False,
                 "timeslot_ids": [0],
                 "preassigned_room_id": None,
+                "same_room_cohort": None,
             }
         ],
     }

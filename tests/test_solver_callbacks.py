@@ -176,9 +176,7 @@ class TestStopAwareCallback:
         fake_response.status_code = 500
 
         with patch.object(cb, "StopSearch"):
-            with patch(
-                "app.solver.callbacks.httpx.post", return_value=fake_response
-            ):
+            with patch("app.solver.callbacks.httpx.post", return_value=fake_response):
                 with patch("app.solver.callbacks.logger") as mock_logger:
                     cb.on_solution_callback()
 

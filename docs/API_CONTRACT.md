@@ -39,7 +39,8 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
       "demand": 55,
       "has_null_enrollment": false,
       "timeslot_ids": [0, 1],
-      "preassigned_room_id": null
+      "preassigned_room_id": null,
+      "same_room_cohort": "cohort_45_sem_1"
     },
     {
       "id": 205,
@@ -50,7 +51,8 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
       "demand": 120,
       "has_null_enrollment": false,
       "timeslot_ids": [0],
-      "preassigned_room_id": 2
+      "preassigned_room_id": 2,
+      "same_room_cohort": null
     }
   ]
 }
