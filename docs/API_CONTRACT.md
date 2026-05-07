@@ -17,6 +17,9 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
   "config": {
     "strict_capacity": false,
     "block_b_restriction_for_pos": true,
+    "block_a_restriction_for_freshmen": true,
+    "undergrad_in_block_a_penalty": 500.0,
+    "pos_in_block_b_penalty": 500.0,
     "wasted_seats_weight": 1.5,
     "unassigned_penalty": 1000.0,
     "time_limit_seconds": 300
@@ -38,6 +41,7 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
       "tiptur": "Graduacao",
       "demand": 55,
       "has_null_enrollment": false,
+      "is_freshmen": false,
       "timeslot_ids": [0, 1],
       "preassigned_room_id": null,
       "same_room_cohort": "cohort_45_sem_1"
@@ -50,6 +54,7 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
       "tiptur": "Graduacao",
       "demand": 120,
       "has_null_enrollment": false,
+      "is_freshmen": false,
       "timeslot_ids": [0],
       "preassigned_room_id": 2,
       "same_room_cohort": null

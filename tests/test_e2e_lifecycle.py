@@ -29,6 +29,9 @@ FULL_PAYLOAD: dict[str, Any] = {
     "config": {
         "strict_capacity": False,
         "block_b_restriction_for_pos": True,
+        "block_a_restriction_for_freshmen": False,
+        "undergrad_in_block_a_penalty": 0.0,
+        "pos_in_block_b_penalty": 0.0,
         "wasted_seats_weight": 1.5,
         "unassigned_penalty": 1000.0,
         "time_limit_seconds": 5,
@@ -54,6 +57,7 @@ FULL_PAYLOAD: dict[str, Any] = {
             "tiptur": "Graduacao",
             "demand": 30,
             "has_null_enrollment": False,
+            "is_freshmen": False,
             "timeslot_ids": [0],
             "preassigned_room_id": None,
             "same_room_cohort": None,

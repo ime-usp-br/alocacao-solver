@@ -90,6 +90,9 @@ def process_job(job_data: dict[str, Any]) -> None:
             pass2_config = SolverConfig(
                 strict_capacity=config.strict_capacity,
                 block_b_restriction_for_pos=config.block_b_restriction_for_pos,
+                block_a_restriction_for_freshmen=config.block_a_restriction_for_freshmen,
+                undergrad_in_block_a_penalty=config.undergrad_in_block_a_penalty,
+                pos_in_block_b_penalty=config.pos_in_block_b_penalty,
                 wasted_seats_weight=config.wasted_seats_weight,
                 unassigned_penalty=config.unassigned_penalty,
                 time_limit_seconds=remaining,

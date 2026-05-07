@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import unicodedata
 from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
@@ -14,6 +15,16 @@ from ortools.sat.python import cp_model
 # O CP-SAT não aceita floats na função objetivo.
 # Multiplicamos os pesos por este fator e trabalhamos com inteiros.
 SCALE = 1000
+
+
+def _sanitize_tiptur(tiptur: str) -> str:
+    """Remove acentos e normaliza para comparação case-insensitive."""
+    return (
+        unicodedata.normalize("NFKD", tiptur)
+        .encode("ASCII", "ignore")
+        .decode("utf-8")
+        .lower()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +53,7 @@ class GroupData:
     tiptur: str
     demand: int
     has_null_enrollment: bool
+    is_freshmen: bool
     timeslot_ids: list[int]
     preassigned_room_id: int | None
     same_room_cohort: str | None = None
@@ -51,6 +63,9 @@ class GroupData:
 class SolverConfig:
     strict_capacity: bool
     block_b_restriction_for_pos: bool
+    block_a_restriction_for_freshmen: bool
+    undergrad_in_block_a_penalty: float
+    pos_in_block_b_penalty: float
     wasted_seats_weight: float
     unassigned_penalty: float
     time_limit_seconds: int
@@ -176,9 +191,19 @@ def run_pass_1(
     # -----------------------------------------------------------------------
     if config.block_b_restriction_for_pos:
         for g in groups:
-            if g.tiptur.lower() == "pos graduacao":
+            if _sanitize_tiptur(g.tiptur) == "pos graduacao":
                 for r in rooms:
                     if r.name.strip().upper().startswith("B"):
+                        model.Add(X[(g.id, r.id)] == 0)
+
+    # -----------------------------------------------------------------------
+    # Restrição 5.5: Proteção de Calouros no Bloco A
+    # -----------------------------------------------------------------------
+    if config.block_a_restriction_for_freshmen:
+        for g in groups:
+            if g.is_freshmen:
+                for r in rooms:
+                    if r.name.strip().upper().startswith("A"):
                         model.Add(X[(g.id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
@@ -215,7 +240,22 @@ def run_pass_1(
             if waste > 0:
                 cost_waste += X[(g.id, r.id)] * waste * wasted_seats_weight_int
 
-    model.Minimize(cost_unassigned + cost_waste)
+    # -----------------------------------------------------------------------
+    # Penalidades Direcionais (Soft Constraints)
+    # -----------------------------------------------------------------------
+    undergrad_penalty_int = int(config.undergrad_in_block_a_penalty * SCALE)
+    pos_penalty_int = int(config.pos_in_block_b_penalty * SCALE)
+
+    cost_directional = 0
+    for g in groups:
+        tipo = _sanitize_tiptur(g.tiptur)
+        for r in rooms:
+            if tipo == "graduacao" and r.name.strip().upper().startswith("A"):
+                cost_directional += X[(g.id, r.id)] * undergrad_penalty_int
+            if tipo == "pos graduacao" and r.name.strip().upper().startswith("B"):
+                cost_directional += X[(g.id, r.id)] * pos_penalty_int
+
+    model.Minimize(cost_unassigned + cost_waste + cost_directional)
 
     # -----------------------------------------------------------------------
     # Resolver
@@ -414,9 +454,20 @@ def run_pass_2(
     # -----------------------------------------------------------------------
     if config.block_b_restriction_for_pos:
         for g in g_unassigned:
-            if g.tiptur.lower() == "pos graduacao":
+            if _sanitize_tiptur(g.tiptur) == "pos graduacao":
                 for r in rooms:
                     if r.name.strip().upper().startswith("B"):
+                        for ts_id in g.timeslot_ids:
+                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
+
+    # -----------------------------------------------------------------------
+    # Restrição 4.5: Proteção de Calouros no Bloco A
+    # -----------------------------------------------------------------------
+    if config.block_a_restriction_for_freshmen:
+        for g in g_unassigned:
+            if g.is_freshmen:
+                for r in rooms:
+                    if r.name.strip().upper().startswith("A"):
                         for ts_id in g.timeslot_ids:
                             model.Add(Y[(g.id, ts_id, r.id)] == 0)
 
@@ -438,6 +489,22 @@ def run_pass_2(
                 # Como reward_g >> waste, isso efetivamente maximiza Y
                 coeff = (waste * wasted_seats_weight_int) - reward_g
                 cost += Y[(g.id, ts_id, r.id)] * coeff
+
+    # -----------------------------------------------------------------------
+    # Penalidades Direcionais no Passe 2 (Soft Constraints)
+    # -----------------------------------------------------------------------
+    undergrad_penalty_int = int(config.undergrad_in_block_a_penalty * SCALE)
+    pos_penalty_int = int(config.pos_in_block_b_penalty * SCALE)
+
+    for g in g_unassigned:
+        tipo = _sanitize_tiptur(g.tiptur)
+        for r in rooms:
+            if tipo == "graduacao" and r.name.strip().upper().startswith("A"):
+                for ts_id in g.timeslot_ids:
+                    cost += Y[(g.id, ts_id, r.id)] * undergrad_penalty_int
+            if tipo == "pos graduacao" and r.name.strip().upper().startswith("B"):
+                for ts_id in g.timeslot_ids:
+                    cost += Y[(g.id, ts_id, r.id)] * pos_penalty_int
 
     model.Minimize(cost)
 
