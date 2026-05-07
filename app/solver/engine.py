@@ -182,12 +182,31 @@ def run_pass_1(
                         model.Add(X[(g.id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
+    # Restrição 6: Mesma Sala para Coortes (same_room_cohort)
+    # -----------------------------------------------------------------------
+    cohort_groups: dict[str, list[GroupData]] = {}
+    for g in groups:
+        if g.same_room_cohort is not None:
+            cohort_groups.setdefault(g.same_room_cohort, []).append(g)
+
+    for cohort, members in cohort_groups.items():
+        if len(members) < 2:
+            continue
+        g_anchor = members[0]
+        for g_i in members[1:]:
+            for r in rooms:
+                model.Add(X[(g_anchor.id, r.id)] == X[(g_i.id, r.id)])
+
+    # -----------------------------------------------------------------------
     # Função Objetivo (com SCALE para evitar floats no CP-SAT)
     # -----------------------------------------------------------------------
     unassigned_penalty_int = int(config.unassigned_penalty * SCALE)
     wasted_seats_weight_int = int(config.wasted_seats_weight * SCALE)
 
-    cost_unassigned = sum(U[g.id] * unassigned_penalty_int for g in groups)
+    cost_unassigned = sum(
+        U[g.id] * unassigned_penalty_int * (1000 if g.same_room_cohort else 1)
+        for g in groups
+    )
 
     cost_waste = 0
     for g in groups:
@@ -279,6 +298,14 @@ def run_pass_2(
     Grupos que ficaram unassigned no Passe 1 podem ser alocados em salas
     diferentes para cada timeslot. O modelo maximiza o número de alocações
     e, entre soluções equivalentes, minimiza o desperdício de assentos.
+
+    Nota sobre coortes (same_room_cohort):
+    A restrição de "mesma sala" é intencionalmente relaxada no Passe 2.
+    Se uma coorte chegou ao Passe 2 como unassigned, é prova matemática
+    de que não existe nenhuma sala viável para todos os seus horários
+    simultaneamente. O Passe 2 atua como fallback de resgate, permitindo
+    quebra de horários, mas mantém prioridade absoluta para grupos de
+    coorte via multiplicador agressivo na recompensa (reward_g).
     """
     from app.solver.utils import build_global_minutes
 
@@ -403,12 +430,13 @@ def run_pass_2(
 
     cost = 0
     for g in g_unassigned:
+        reward_g = reward * (1000 if g.same_room_cohort else 1)
         for ts_id in g.timeslot_ids:
             for r in rooms:
                 waste = max(0, r.capacity - g.demand)
-                # Minimizar (waste - reward) quando Y == 1
-                # Como reward >> waste, isso efetivamente maximiza Y
-                coeff = (waste * wasted_seats_weight_int) - reward
+                # Minimizar (waste - reward_g) quando Y == 1
+                # Como reward_g >> waste, isso efetivamente maximiza Y
+                coeff = (waste * wasted_seats_weight_int) - reward_g
                 cost += Y[(g.id, ts_id, r.id)] * coeff
 
     model.Minimize(cost)

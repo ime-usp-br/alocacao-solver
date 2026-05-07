@@ -867,3 +867,82 @@ class TestPass2NoOverlapWithFixed:
         # Não há sugestões possíveis.
         assert pass2.status in ("optimal", "feasible")
         assert pass2.suggestions == []
+
+
+class TestScenarioCohortSameRoom:
+    """Cenário O: Grupos do mesmo cohort devem ser alocados na mesma sala."""
+
+    def test_cohort_groups_share_same_room(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+            RoomData(id=2, name="B09", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[1],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert len(result.allocations) == 2
+        allocated_rooms = {room_id for (_, room_id) in result.allocations}
+        assert len(allocated_rooms) == 1
+
+
+class TestScenarioCohortPriority:
+    """Cenário P: Grupos de coorte têm prioridade absoluta sobre grupos sem coorte."""
+
+    def test_cohort_group_gets_priority(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort=None,
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 1)]
+        assert result.unassigned_groups == [102]
