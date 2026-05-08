@@ -78,6 +78,8 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
   "job_id": "uuid-1234-5678",
   "message": "Sinal de parada enviado. O worker enviará a solução parcial via webhook em instantes."
 }
+*   **Response (404 Not Found):**
+    *   Retornado se o `job_id` não existe na fila RQ ou já expirou.
 
 ## 3. Rota de Resgate (Fallback)
 
