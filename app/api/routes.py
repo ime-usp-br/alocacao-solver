@@ -48,6 +48,14 @@ def stop_job(
     job_id: str,
     redis_conn: redis.Redis = Depends(get_redis_connection),
 ) -> StopResponse:
+    try:
+        Job.fetch(job_id, connection=redis_conn)
+    except NoSuchJobError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job não encontrado ou já expirou.",
+        )
+
     redis_conn.setex(f"stop_job:{job_id}", 3600, "true")
     return StopResponse(
         job_id=job_id,

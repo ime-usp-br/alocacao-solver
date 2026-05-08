@@ -107,11 +107,13 @@ Para aprofundar no funcionamento interno, consulte a pasta `docs/`:
 
 3. Suba a infraestrutura completa (FastAPI, Worker RQ e Redis):
    ```bash
-   docker-compose up -d --build
+    docker compose up -d --build
    ```
 
 4. Acesse a documentação interativa Swagger (OpenAPI) gerada automaticamente pelo FastAPI:
-   - **http://localhost:8000/docs**
+   - **http://localhost:8001/docs**
+
+> **Dica para Testes:** Para verificar o status `425 Too Early` (job ainda processando), envie um payload com muitos grupos/salas e `time_limit_seconds` alto (ex: 300), e imediatamente consulte `GET /api/v1/jobs/{job_id}/result`.
 
 ### Ambiente de Desenvolvimento Local (Poetry)
 

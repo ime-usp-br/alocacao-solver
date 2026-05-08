@@ -91,6 +91,9 @@ def test_solve_invalid_payload(fake_redis: fakeredis.FakeRedis) -> None:
 
 def test_stop_job(fake_redis: fakeredis.FakeRedis) -> None:
     job_id = "test-job-123"
+    queue = Queue(connection=fake_redis)
+    queue.enqueue(process_job, {}, job_id=job_id)
+
     response = client.post(f"/api/v1/jobs/{job_id}/stop")
     assert response.status_code == 200
     data = response.json()
@@ -100,6 +103,12 @@ def test_stop_job(fake_redis: fakeredis.FakeRedis) -> None:
     assert ttl > 0
     assert ttl <= 3600
     assert fake_redis.get(f"stop_job:{job_id}") == b"true"
+
+
+def test_stop_job_not_found(fake_redis: fakeredis.FakeRedis) -> None:
+    response = client.post("/api/v1/jobs/inexistente-123/stop")
+    assert response.status_code == 404
+    assert "não encontrado" in response.json()["detail"]
 
 
 def test_get_result_not_found(fake_redis: fakeredis.FakeRedis) -> None:
