@@ -1166,3 +1166,91 @@ class TestScenarioPosGradPrefersBlockA:
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
         assert result.unassigned_groups == []
+
+
+class TestScenarioRoomNotAvailableForAuto:
+    """Cenário U: Salas bloqueadas para distribuição automática."""
+
+    def test_auto_group_cannot_use_blocked_room(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50, available_for_auto=False),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == []
+        assert result.unassigned_groups == [101]
+
+    def test_preassigned_group_can_use_blocked_room(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50, available_for_auto=False),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 1)]
+        assert result.unassigned_groups == []
+
+    def test_blocked_room_in_pass2(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50, available_for_auto=False),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0, 1],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config()
+        pass1 = run_pass_1(config, timeslots, rooms, groups)
+        assert pass1.unassigned_groups == [101]
+
+        pass2 = run_pass_2(
+            config,
+            timeslots,
+            rooms,
+            groups,
+            pass1.allocations,
+            pass1.unassigned_groups,
+        )
+        assert pass2.status in ("optimal", "feasible")
+        assert pass2.suggestions == []

@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from app.api.schemas import (
     Config,
     Group,
+    Room,
     SolveErrorResponse,
     SolveRequest,
     SolveResponse,
@@ -225,3 +226,15 @@ def test_group_invalid_type() -> None:
                 "same_room_cohort": None,
             }
         )
+
+
+def test_room_default_available_for_auto() -> None:
+    payload = {"id": 1, "name": "B09", "capacity": 40}
+    room = Room.model_validate(payload)
+    assert room.available_for_auto is True
+
+
+def test_room_available_for_auto_false() -> None:
+    payload = {"id": 1, "name": "B09", "capacity": 40, "available_for_auto": False}
+    room = Room.model_validate(payload)
+    assert room.available_for_auto is False
