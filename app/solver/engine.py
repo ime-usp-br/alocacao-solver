@@ -45,6 +45,7 @@ class RoomData:
     id: int
     name: str
     capacity: int
+    available_for_auto: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +151,15 @@ def run_pass_1(
     for g in groups:
         if g.preassigned_room_id is not None:
             model.Add(X[(g.id, g.preassigned_room_id)] == 1)
+
+    # -----------------------------------------------------------------------
+    # Restrição 2.5: Salas bloqueadas para distribuição automática
+    # -----------------------------------------------------------------------
+    for g in groups:
+        if g.preassigned_room_id is None:  # Turma automática
+            for r in rooms:
+                if not r.available_for_auto:
+                    model.Add(X[(g.id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
     # Restrição 3: Conflitos de horário (AddNoOverlap)
@@ -470,6 +480,15 @@ def run_pass_2(
                     if r.name.strip().upper().startswith("A"):
                         for ts_id in g.timeslot_ids:
                             model.Add(Y[(g.id, ts_id, r.id)] == 0)
+
+    # -----------------------------------------------------------------------
+    # Restrição 4.6: Salas bloqueadas para distribuição automática
+    # -----------------------------------------------------------------------
+    for g in g_unassigned:
+        for r in rooms:
+            if not r.available_for_auto:
+                for ts_id in g.timeslot_ids:
+                    model.Add(Y[(g.id, ts_id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
     # Função Objetivo: Maximizar alocações (via recompensa gigante)

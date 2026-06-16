@@ -38,6 +38,7 @@ class Room(BaseModel):
     id: int
     name: str
     capacity: int = Field(..., ge=0)
+    available_for_auto: bool = True
 
 
 class Group(BaseModel):

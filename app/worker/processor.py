@@ -60,6 +60,7 @@ def _to_internal_rooms(rooms: list[Room]) -> list[RoomData]:
             id=r.id,
             name=r.name,
             capacity=r.capacity,
+            available_for_auto=r.available_for_auto,
         )
         for r in rooms
     ]
