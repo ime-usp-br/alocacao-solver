@@ -192,6 +192,8 @@ def run_pass_1(
         for g in groups:
             if not g.has_null_enrollment:
                 for r in rooms:
+                    if g.preassigned_room_id == r.id:
+                        continue
                     if r.capacity < g.demand:
                         # Sala é muito pequena: forçar X == 0
                         model.Add(X[(g.id, r.id)] == 0)
@@ -203,6 +205,8 @@ def run_pass_1(
         for g in groups:
             if _sanitize_tiptur(g.tiptur) == "pos graduacao":
                 for r in rooms:
+                    if g.preassigned_room_id == r.id:
+                        continue
                     if r.name.strip().upper().startswith("B"):
                         model.Add(X[(g.id, r.id)] == 0)
 
@@ -213,6 +217,8 @@ def run_pass_1(
         for g in groups:
             if g.is_freshmen:
                 for r in rooms:
+                    if g.preassigned_room_id == r.id:
+                        continue
                     if r.name.strip().upper().startswith("A"):
                         model.Add(X[(g.id, r.id)] == 0)
 

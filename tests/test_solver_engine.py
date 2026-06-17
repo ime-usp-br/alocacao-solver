@@ -556,6 +556,93 @@ class TestPass2Skipped:
         assert pass2.suggestions == []
 
 
+class TestScenarioPreassignedOverridesCapacity:
+    """Pré-alocação manual deve ignorar restrição de capacidade."""
+
+    def test_preassigned_in_small_room_is_feasible(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=10),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=50,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+        ]
+        config = _default_config(strict_capacity=True)
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 1)]
+        assert result.unassigned_groups == []
+
+
+class TestScenarioPreassignedOverridesBlockB:
+    """Pré-alocação manual deve ignorar restrição do Bloco B."""
+
+    def test_preassigned_pos_grad_in_block_b_is_feasible(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="B09", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Pos Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+        ]
+        config = _default_config(block_b_restriction_for_pos=True)
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 1)]
+        assert result.unassigned_groups == []
+
+
+class TestScenarioPreassignedOverridesBlockA:
+    """Pré-alocação manual deve ignorar restrição do Bloco A para calouros."""
+
+    def test_preassigned_freshmen_in_block_a_is_feasible(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=True,
+                timeslot_ids=[0],
+                preassigned_room_id=1,
+            ),
+        ]
+        config = _default_config(block_a_restriction_for_freshmen=True)
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 1)]
+        assert result.unassigned_groups == []
+
+
 class TestPass2BasicAllocation:
     """Cenário J: Grupo unassigned do Passe 1 é sugerido no Passe 2."""
 
