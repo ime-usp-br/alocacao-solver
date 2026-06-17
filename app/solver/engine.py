@@ -230,7 +230,14 @@ def run_pass_1(
         g_anchor = members[0]
         for g_i in members[1:]:
             for r in rooms:
-                model.Add(X[(g_anchor.id, r.id)] == X[(g_i.id, r.id)])
+                anchor_blocked = (not r.available_for_auto) and (
+                    g_anchor.preassigned_room_id is None
+                )
+                member_blocked = (not r.available_for_auto) and (
+                    g_i.preassigned_room_id is None
+                )
+                if not anchor_blocked and not member_blocked:
+                    model.Add(X[(g_anchor.id, r.id)] == X[(g_i.id, r.id)])
 
     # -----------------------------------------------------------------------
     # Função Objetivo (com SCALE para evitar floats no CP-SAT)

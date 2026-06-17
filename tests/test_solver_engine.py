@@ -1168,6 +1168,96 @@ class TestScenarioPosGradPrefersBlockA:
         assert result.unassigned_groups == []
 
 
+class TestScenarioCohortWithBlockedRoom:
+    """Cenário O.5: Cohort com anchor pré-alocado em sala bloqueada para auto."""
+
+    def test_cohort_with_preassigned_anchor_in_blocked_room_is_feasible(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50, available_for_auto=False),
+            RoomData(id=2, name="B09", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=1,  # manual na sala bloqueada
+                same_room_cohort="2026-1",
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[1],
+                preassigned_room_id=None,  # automático
+                same_room_cohort="2026-1",
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        # O problema deve ser viável (não infeasible).
+        # O grupo 101 está pré-alocado na sala 1 (bloqueada para auto).
+        # O grupo 102 não pode usar a sala 1 (bloqueada para automática) e
+        # a restrição de cohort força igualdade nas salas não bloqueadas,
+        # então 102 também não pode usar a sala 2 (pois 101 está em 1).
+        # Portanto, 102 fica unassigned — mas o solver não retorna infeasible.
+        assert result.status in ("optimal", "feasible")
+        assert (101, 1) in result.allocations
+        assert 102 in result.unassigned_groups
+
+    def test_cohort_with_auto_anchor_blocked_room_allows_other_room(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=50, available_for_auto=False),
+            RoomData(id=2, name="B09", capacity=50),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,  # automático
+                same_room_cohort="2026-1",
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[1],
+                preassigned_room_id=None,  # automático
+                same_room_cohort="2026-1",
+            ),
+        ]
+        config = _default_config()
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert len(result.allocations) == 2
+        # Ambos devem estar na mesma sala, e essa sala deve ser a 2 (B09),
+        # pois a sala 1 está bloqueada para automática.
+        allocated_rooms = {room_id for (_, room_id) in result.allocations}
+        assert len(allocated_rooms) == 1
+        assert 2 in allocated_rooms
+
+
 class TestScenarioRoomNotAvailableForAuto:
     """Cenário U: Salas bloqueadas para distribuição automática."""
 
