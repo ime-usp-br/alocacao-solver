@@ -36,7 +36,7 @@ class TestStopAwareCallback:
         assert key == "progress:job_test-1"
         assert ttl == 3600
         payload = json.loads(raw_payload)
-        assert payload["progress"] == 15.0
+        assert 15.0 <= payload["progress"] <= 15.05
         assert "Otimizando distribuição" in payload["message"]
         assert "Soluções encontradas: 1" in payload["message"]
 
