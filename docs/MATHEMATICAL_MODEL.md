@@ -30,10 +30,16 @@ A alocação de salas é dividida em dois passes (Two-Pass Solver). O Passe 1 te
         *   Se `config.strict_capacity == False`, a restrição é relaxada (permitindo aplicar margem estática de 1.2x ou flexibilização total).
 5.  **Regra Bloco B (Pós-Graduação):**
     *   Se `config.block_b_restriction_for_pos == True` e o grupo `g.tiptur == 'Pos Graduacao'` e o nome da sala `r` começar com a letra `B` (ex: `B09`), então `X[g, r] == 0`.
-6.  **Mesma Sala para Coortes (same_room_cohort — Passe 1):**
-    *   Para cada coorte `c` (onde `same_room_cohort` não é `None`), seja `g_anchor` a primeira turma da coorte. Para cada outra turma `g_i ∈ c` e cada sala `r ∈ R`:
-        `X[g_anchor, r] == X[g_i, r]`.
-    *   Isso força todas as turmas da coorte a compartilharem exatamente o mesmo vetor de alocação de salas. Como a Restrição 1 garante que um grupo só pode estar em uma única sala, a igualdade acima assegura que todos os grupos da coorte ocupam a mesma sala.
+6.  **Coortes (same_room_cohort — Passe 1, Soft Constraint):**
+    *   Para cada coorte `c` (onde `same_room_cohort` não é `None`), seja `members(c)` o conjunto de grupos pertencentes a `c`.
+    *   Variável auxiliar `Z[c, r] ∈ {0, 1}`: vale 1 se **algum** grupo do coorte `c` utilizar a sala `r`.
+        *   `Z[c, r] >= X[g, r]` para todo `g ∈ members(c)`.
+        *   `Z[c, r] <= Σ_{g ∈ members(c)} X[g, r]`.
+    *   Seja `num_rooms_used[c] = Σ_r Z[c, r]` o número de salas distintas efetivamente utilizadas pelo coorte.
+    *   Variável auxiliar `extra_rooms[c] ∈ ℤ` tal que `extra_rooms[c] = max(0, num_rooms_used[c] - 1)`:
+        *   `extra_rooms[c] >= num_rooms_used[c] - 1`
+        *   `extra_rooms[c] >= 0`
+    *   A função objetivo penaliza `extra_rooms[c] * config.split_cohort_penalty`, ou seja, cada sala adicional além da primeira paga uma penalidade configurável. Isso permite que o solver "quebre" o coorte quando não existir uma única sala viável para todos os seus grupos, absorvendo o custo em vez de retornar `INFEASIBLE`.
 
 **Função Objetivo (Minimizar Custo Total):**
 *   Definimos o fator de prioridade `P[g]`:
@@ -51,7 +57,8 @@ A alocação de salas é dividida em dois passes (Two-Pass Solver). O Passe 1 te
         *   `excess = MAX(0, (r.capacity - free_seats_max) - g.demand)`
         *   `piecewise(g, r) = excess * waste_penalty`
     *   Caso contrário (zona de conforto): `piecewise(g, r) = 0`.
-*   *Função a minimizar:* `C_total = C_u + C_p`.
+*   **Custo de Divisão de Coortes:** `C_split = Σ_c extra_rooms[c] * config.split_cohort_penalty`.
+*   *Função a minimizar:* `C_total = C_u + C_p + C_split`.
 
 ---
 

@@ -1138,13 +1138,146 @@ class TestScenarioCohortSameRoom:
                 same_room_cohort="2026-1",
             ),
         ]
-        config = _default_config()
+        # Penalidade alta o suficiente para manter o coorte unido.
+        config = _default_config(split_cohort_penalty=1000.0)
         result = run_pass_1(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
         allocated_rooms = {room_id for (_, room_id) in result.allocations}
         assert len(allocated_rooms) == 1
+
+
+class TestScenarioCohortCanSplitWhenPenaltyZero:
+    """Cenário O.1: Com split_cohort_penalty=0, o coorte pode ser dividido."""
+
+    def test_cohort_splits_without_penalty(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=30),
+            RoomData(id=2, name="B09", capacity=30),
+        ]
+        # Dois grupos do mesmo coorte no mesmo horário. Sem penalidade de
+        # divisão, o solver deve alocar cada um em uma sala diferente.
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+        ]
+        config = _default_config(split_cohort_penalty=0.0)
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert len(result.allocations) == 2
+        allocated_rooms = {room_id for (_, room_id) in result.allocations}
+        assert len(allocated_rooms) == 2
+
+
+class TestScenarioCohortSplitsWhenNoSingleRoomFits:
+    """Cenário O.2: Coorte é dividido ao invés de retornar infeasible."""
+
+    def test_cohort_splits_when_same_room_is_impossible(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=30),
+            RoomData(id=2, name="B09", capacity=30),
+        ]
+        # Dois grupos do mesmo coorte no mesmo horário. Nenhuma sala cabe
+        # ambos simultaneamente, então o solver deve dividir o coorte.
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+        ]
+        config = _default_config(split_cohort_penalty=100.0)
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert len(result.allocations) == 2
+        assert result.unassigned_groups == []
+        allocated_rooms = {room_id for (_, room_id) in result.allocations}
+        assert len(allocated_rooms) == 2
+
+
+class TestScenarioCohortSplitPenaltyInObjective:
+    """Cenário O.3: A divisão do coorte é refletida no valor objetivo."""
+
+    def test_split_cohort_penalty_appears_in_objective(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=30),
+            RoomData(id=2, name="B09", capacity=30),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+            GroupData(
+                id=102,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+                same_room_cohort="2026-1",
+            ),
+        ]
+        split_penalty = 100.0
+        config = _default_config(split_cohort_penalty=split_penalty)
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert len(result.allocations) == 2
+        # Cada sala é usada exatamente uma vez, portanto extra_rooms = 1.
+        assert result.objective_value == split_penalty
 
 
 class TestScenarioCohortPriority:
@@ -1404,13 +1537,13 @@ class TestScenarioCohortWithBlockedRoom:
 
         # O problema deve ser viável (não infeasible).
         # O grupo 101 está pré-alocado na sala 1 (bloqueada para auto).
-        # O grupo 102 não pode usar a sala 1 (bloqueada para automática) e
-        # a restrição de cohort força igualdade nas salas não bloqueadas,
-        # então 102 também não pode usar a sala 2 (pois 101 está em 1).
-        # Portanto, 102 fica unassigned — mas o solver não retorna infeasible.
+        # O grupo 102 não pode usar a sala 1 (bloqueada para automática).
+        # Como a restrição de cohort agora é soft, 102 pode ser alocado na
+        # sala 2, pagando a penalidade de divisão (split_cohort_penalty=0).
         assert result.status in ("optimal", "feasible")
         assert (101, 1) in result.allocations
-        assert 102 in result.unassigned_groups
+        assert (102, 2) in result.allocations
+        assert result.unassigned_groups == []
 
     def test_cohort_with_auto_anchor_blocked_room_allows_other_room(self) -> None:
         timeslots = [

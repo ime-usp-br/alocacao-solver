@@ -228,27 +228,41 @@ def run_pass_1(
                         model.Add(X[(g.id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
-    # Restrição 6: Mesma Sala para Coortes (same_room_cohort)
+    # Restrição 6: Coortes (same_room_cohort) — Soft Constraint
     # -----------------------------------------------------------------------
     cohort_groups: dict[str, list[GroupData]] = {}
     for g in groups:
         if g.same_room_cohort is not None:
             cohort_groups.setdefault(g.same_room_cohort, []).append(g)
 
+    cost_cohort_split = 0
+    split_cohort_penalty_int = int(config.split_cohort_penalty * SCALE)
+
     for cohort, members in cohort_groups.items():
         if len(members) < 2:
             continue
-        g_anchor = members[0]
-        for g_i in members[1:]:
-            for r in rooms:
-                anchor_blocked = (not r.available_for_auto) and (
-                    g_anchor.preassigned_room_id is None
-                )
-                member_blocked = (not r.available_for_auto) and (
-                    g_i.preassigned_room_id is None
-                )
-                if not anchor_blocked and not member_blocked:
-                    model.Add(X[(g_anchor.id, r.id)] == X[(g_i.id, r.id)])
+
+        # Z[cohort, r] = 1 se algum grupo do coorte usar a sala r.
+        Z: dict[int, cp_model.IntVar] = {}
+        for r in rooms:
+            Z[r.id] = model.NewBoolVar(f"Z_{cohort}_{r.id}")
+
+            # Se algum membro usa a sala, Z deve valer 1.
+            for g in members:
+                model.Add(Z[r.id] >= X[(g.id, r.id)])
+
+            # Se nenhum membro usa a sala, Z deve valer 0.
+            model.Add(Z[r.id] <= sum(X[(g.id, r.id)] for g in members))
+
+        # Número de salas distintas efetivamente utilizadas pelo coorte.
+        num_rooms_used = sum(Z[r.id] for r in rooms)
+
+        # Penalidade por cada sala adicional além da primeira.
+        extra_rooms = model.NewIntVar(0, len(rooms), f"extra_rooms_{cohort}")
+        model.Add(extra_rooms >= num_rooms_used - 1)
+        model.Add(extra_rooms >= 0)
+
+        cost_cohort_split += extra_rooms * split_cohort_penalty_int
 
     # -----------------------------------------------------------------------
     # Função Objetivo (com SCALE para evitar floats no CP-SAT)
@@ -300,7 +314,7 @@ def run_pass_1(
             if tipo == "pos graduacao" and r.name.strip().upper().startswith("B"):
                 cost_directional += X[(g.id, r.id)] * pos_penalty_int
 
-    model.Minimize(cost_unassigned + cost_piecewise + cost_directional)
+    model.Minimize(cost_unassigned + cost_piecewise + cost_directional + cost_cohort_split)
 
     # -----------------------------------------------------------------------
     # Resolver
