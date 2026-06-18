@@ -15,12 +15,7 @@ from app.api.schemas import (
     SolveRequest,
 )
 from app.solver.callbacks import StopAwareCallback
-from app.solver.engine import (
-    Pass2Result,
-    SolverConfig,
-    run_pass_1,
-    run_pass_2,
-)
+from app.solver.engine import run_solver
 from app.worker.processor import (
     _build_solve_response,
     _save_result_to_redis,
@@ -38,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 def process_job(job_data: dict[str, Any]) -> None:
     """
-    Entrypoint do RQ Worker. Orquestra Pass 1 e Pass 2,
+    Entrypoint do RQ Worker. Executa o solver unificado,
     envia webhook e persiste no Redis.
     """
     job_id = job_data.get("job_id", "unknown")
@@ -57,7 +52,7 @@ def process_job(job_data: dict[str, Any]) -> None:
         progress_webhook_url = str(request.meta.progress_webhook_url)
 
         # ------------------------------------------------------------------
-        # Pass 1
+        # Solver unificado
         # ------------------------------------------------------------------
         callback = StopAwareCallback(
             job_id=job_id,
@@ -65,70 +60,16 @@ def process_job(job_data: dict[str, Any]) -> None:
             time_limit_seconds=config.time_limit_seconds,
             progress_webhook_url=progress_webhook_url,
             progress_offset=15.0,
-            progress_scale=55.0,
+            progress_scale=70.0,
         )
 
-        pass1 = run_pass_1(config, timeslots, rooms, groups, callback=callback)
-
-        # ------------------------------------------------------------------
-        # Pass 2 (apenas se sobrarem grupos e tempo)
-        # ------------------------------------------------------------------
-        pass2: Pass2Result
-        if pass1.unassigned_groups:
-            elapsed = pass1.solve_time_seconds
-            remaining = max(1, config.time_limit_seconds - int(elapsed))
-
-            pass2_callback = StopAwareCallback(
-                job_id=job_id,
-                redis_conn=redis_conn,
-                time_limit_seconds=remaining,
-                progress_webhook_url=progress_webhook_url,
-                progress_offset=70.0,
-                progress_scale=15.0,
-            )
-
-            pass2_config = SolverConfig(
-                strict_capacity=config.strict_capacity,
-                block_b_restriction_for_pos=config.block_b_restriction_for_pos,
-                block_a_restriction_for_freshmen=config.block_a_restriction_for_freshmen,
-                undergrad_in_block_a_penalty=config.undergrad_in_block_a_penalty,
-                pos_in_block_b_penalty=config.pos_in_block_b_penalty,
-                waste_penalty=config.waste_penalty,
-                unassigned_penalty=config.unassigned_penalty,
-                time_limit_seconds=remaining,
-                claustrophobia_penalty=config.claustrophobia_penalty,
-                comfort_zone_min_percent=config.comfort_zone_min_percent,
-                comfort_zone_max_percent=config.comfort_zone_max_percent,
-                split_class_penalty=config.split_class_penalty,
-                split_cohort_penalty=config.split_cohort_penalty,
-            )
-
-            pass2 = run_pass_2(
-                config=pass2_config,
-                timeslots=timeslots,
-                rooms=rooms,
-                groups=groups,
-                pass1_allocations=pass1.allocations,
-                pass1_unassigned_groups=pass1.unassigned_groups,
-                callback=pass2_callback,
-            )
-        else:
-            pass2 = Pass2Result(
-                status="skipped",
-                solve_time_seconds=0.0,
-                suggestions=[],
-                solutions_found=0,
-            )
+        result = run_solver(config, timeslots, rooms, groups, callback=callback)
 
         # ------------------------------------------------------------------
         # Montar resposta e entregar
         # ------------------------------------------------------------------
-        stopped = callback.was_stopped
-        if pass1.unassigned_groups:
-            stopped = stopped or pass2_callback.was_stopped
-
-        global_status = "stopped" if stopped else pass1.status
-        response_payload = _build_solve_response(job_id, pass1, pass2, global_status)
+        global_status = "stopped" if callback.was_stopped else result.status
+        response_payload = _build_solve_response(job_id, result, global_status)
         _save_result_to_redis(redis_conn, job_id, response_payload)
 
         # Marca 100% no progresso assim que o solver finaliza.

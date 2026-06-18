@@ -5,8 +5,7 @@ from app.solver.engine import (
     RoomData,
     SolverConfig,
     TimeslotData,
-    run_pass_1,
-    run_pass_2,
+    run_solver,
 )
 
 
@@ -58,7 +57,7 @@ class TestScenarioTrivialNoConflict:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -96,7 +95,7 @@ class TestScenarioConflictForcesChoice:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 1
@@ -126,7 +125,7 @@ class TestScenarioPreassignedRoom:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 2)]
@@ -155,7 +154,7 @@ class TestScenarioBlockB:
             ),
         ]
         config = _default_config(block_b_restriction_for_pos=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == []
@@ -180,7 +179,7 @@ class TestScenarioBlockB:
             ),
         ]
         config = _default_config(block_b_restriction_for_pos=False)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -206,7 +205,7 @@ class TestScenarioBlockB:
             ),
         ]
         config = _default_config(block_b_restriction_for_pos=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == []
@@ -235,7 +234,7 @@ class TestScenarioStrictCapacity:
             ),
         ]
         config = _default_config(strict_capacity=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == []
@@ -262,7 +261,7 @@ class TestScenarioStrictCapacity:
             ),
         ]
         config = _default_config(strict_capacity=False)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -302,7 +301,7 @@ class TestScenarioObjectiveUnassignedPenalty:
         # Penalidade de unassigned é 1000 (default), waste é pequeno.
         # O solver deve alocar exatamente 1 grupo (cabe na sala) e deixar o outro unassigned.
         config = _default_config(unassigned_penalty=1000, waste_penalty=1)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 1
@@ -344,7 +343,7 @@ class TestScenarioMultiTimeslotNoOverlap:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         # Apenas um dos grupos pode usar a sala A242 na qua.
@@ -389,7 +388,7 @@ class TestScenarioInfeasible:
         ]
         # Ambos pré-alocados na mesma sala no mesmo horário -> impossível.
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status == "infeasible"
         assert result.allocations == []
@@ -428,7 +427,7 @@ class TestScenarioSameTimeslotDifferentRooms:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -470,7 +469,7 @@ class TestScenarioSameTimeslotSameRoomInfeasible:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status == "infeasible"
         assert result.allocations == []
@@ -509,7 +508,7 @@ class TestScenarioContiguousTimeslotsSameRoom:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -517,43 +516,6 @@ class TestScenarioContiguousTimeslotsSameRoom:
         # Ambos devem conseguir a mesma sala porque os horários são contíguos
         assert allocated_rooms == [1, 1]
         assert result.unassigned_groups == []
-
-
-class TestPass2Skipped:
-    """Cenário I: Passe 2 é pulado quando não há grupos unassigned."""
-
-    def test_skipped_when_all_allocated(self) -> None:
-        timeslots = [
-            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
-        ]
-        rooms = [
-            RoomData(id=1, name="A242", capacity=50),
-        ]
-        groups = [
-            GroupData(
-                id=101,
-                tiptur="Graduacao",
-                demand=30,
-                has_null_enrollment=False,
-                is_freshmen=False,
-                timeslot_ids=[0],
-                preassigned_room_id=None,
-            ),
-        ]
-        config = _default_config()
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.unassigned_groups == []
-
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
-        )
-        assert pass2.status == "skipped"
-        assert pass2.suggestions == []
 
 
 class TestScenarioPiecewisePrefersComfortZoneOverClaustrophobia:
@@ -586,7 +548,7 @@ class TestScenarioPiecewisePrefersComfortZoneOverClaustrophobia:
             claustrophobia_penalty=100.0,
             waste_penalty=1.0,
         )
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 2)]
@@ -623,7 +585,7 @@ class TestScenarioPiecewisePrefersComfortZoneOverWaste:
             claustrophobia_penalty=100.0,
             waste_penalty=10.0,
         )
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 2)]
@@ -658,7 +620,7 @@ class TestScenarioPiecewiseComfortZoneHasZeroCost:
             claustrophobia_penalty=100.0,
             waste_penalty=10.0,
         )
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -688,7 +650,7 @@ class TestScenarioPreassignedOverridesCapacity:
             ),
         ]
         config = _default_config(strict_capacity=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -717,7 +679,7 @@ class TestScenarioPreassignedOverridesBlockB:
             ),
         ]
         config = _default_config(block_b_restriction_for_pos=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -746,71 +708,15 @@ class TestScenarioPreassignedOverridesBlockA:
             ),
         ]
         config = _default_config(block_a_restriction_for_freshmen=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
         assert result.unassigned_groups == []
 
 
-class TestPass2BasicAllocation:
-    """Cenário J: Grupo unassigned do Passe 1 é sugerido no Passe 2."""
-
-    def test_unassigned_group_gets_suggestion(self) -> None:
-        timeslots = [
-            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
-        ]
-        rooms = [
-            RoomData(id=1, name="A242", capacity=50),
-        ]
-        groups = [
-            GroupData(
-                id=101,
-                tiptur="Graduacao",
-                demand=30,
-                has_null_enrollment=False,
-                is_freshmen=False,
-                timeslot_ids=[0],
-                preassigned_room_id=None,
-            ),
-        ]
-        config = _default_config()
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        # O Passe 1 aloca o grupo 101 na sala 1
-        assert pass1.allocations == [(101, 1)]
-        assert pass1.unassigned_groups == []
-
-        # Forçar cenário onde 101 fica unassigned no Passe 1 (capacidade strict)
-        config_strict = _default_config(strict_capacity=True)
-        groups_big = [
-            GroupData(
-                id=101,
-                tiptur="Graduacao",
-                demand=60,
-                has_null_enrollment=False,
-                is_freshmen=False,
-                timeslot_ids=[0],
-                preassigned_room_id=None,
-            ),
-        ]
-        pass1_big = run_pass_1(config_strict, timeslots, rooms, groups_big)
-        assert pass1_big.unassigned_groups == [101]
-
-        pass2 = run_pass_2(
-            config_strict,
-            timeslots,
-            rooms,
-            groups_big,
-            pass1_big.allocations,
-            pass1_big.unassigned_groups,
-        )
-        # Como a capacidade é strict e a sala não comporta, não há sugestão
-        assert pass2.status in ("optimal", "feasible")
-        assert pass2.suggestions == []
-
-
-class TestPass2BestEffort:
-    """Cenário K: Passe 2 sugere o máximo possível (best effort)."""
+class TestScenarioSplitClassBestEffort:
+    """Cenário K: Solver unificado sugere alocações parciais quando um horário está bloqueado."""
 
     def test_partial_allocation_when_one_timeslot_blocked_by_fixed(self) -> None:
         timeslots = [
@@ -822,7 +728,6 @@ class TestPass2BestEffort:
         ]
         # Grupo 101 está fixo na sala 1 no seg (timeslot 0).
         # Grupo 102 precisa de seg E ter, mas sala 1 só está livre no ter.
-        # No Passe 1, 102 fica unassigned porque precisa de uma única sala para ambos.
         groups = [
             GroupData(
                 id=101,
@@ -844,168 +749,111 @@ class TestPass2BestEffort:
             ),
         ]
         config = _default_config()
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.allocations == [(101, 1)]
-        assert pass1.unassigned_groups == [102]
+        result = run_solver(config, timeslots, rooms, groups)
 
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
-        )
-        # Passe 2 deve sugerir sala 1 para o grupo 102 apenas no timeslot 1 (ter).
-        # O timeslot 0 (seg) está bloqueado pelo grupo 101 fixo.
-        assert pass2.status in ("optimal", "feasible")
-        suggestions_for_102 = [s for s in pass2.suggestions if s[0] == 102]
+        assert result.status in ("optimal", "feasible")
+        assert (101, 1) in result.allocations
+        # 102 não pode ter uma única sala para todos os horários, portanto vai
+        # para unassigned_groups com uma sugestão parcial no ter.
+        assert 102 in result.unassigned_groups
+        suggestions_for_102 = [s for s in result.suggestions if s[0] == 102]
         assert (102, 1, 1) in suggestions_for_102
         assert all(s[1] != 0 for s in suggestions_for_102)
 
 
-class TestPass2BlockB:
-    """Cenário L: Regra do Bloco B aplicada no Passe 2."""
+class TestScenarioSplitClassPenalty:
+    """Cenário K.1: Penalidade de split class influencia a escolha do solver."""
 
-    def test_pos_grad_blocked_in_pass2(self) -> None:
+    def test_split_class_penalty_prevents_split(self) -> None:
         timeslots = [
             TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
         ]
         rooms = [
-            RoomData(id=1, name="B09", capacity=50),
+            RoomData(id=1, name="A242", capacity=30),  # exata, sem waste
+            RoomData(id=2, name="B09", capacity=40),  # waste de 10 assentos
         ]
+        # O grupo 101 está fixo na sala 1 no seg, bloqueando-a para o grupo 102.
+        # O grupo 102 precisa de seg e ter. No seg só pode usar a sala 2.
+        # No ter pode usar a sala 1 (sem waste) ou a sala 2 (com waste).
+        # Com split_class_penalty alto, o solver mantém 102 inteiramente na sala 2.
         groups = [
             GroupData(
                 id=101,
-                tiptur="Pos Graduacao",
+                tiptur="Graduacao",
                 demand=30,
                 has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
-                preassigned_room_id=None,
+                preassigned_room_id=1,
             ),
-        ]
-        config = _default_config(block_b_restriction_for_pos=True)
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.unassigned_groups == [101]
-
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
-        )
-        assert pass2.status in ("optimal", "feasible")
-        assert pass2.suggestions == []
-
-    def test_pos_grad_allowed_in_pass2_when_disabled(self) -> None:
-        timeslots = [
-            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
-        ]
-        rooms = [
-            RoomData(id=1, name="B09", capacity=50),
-        ]
-        groups = [
             GroupData(
-                id=101,
-                tiptur="Pos Graduacao",
+                id=102,
+                tiptur="Graduacao",
                 demand=30,
                 has_null_enrollment=False,
                 is_freshmen=False,
-                timeslot_ids=[0],
+                timeslot_ids=[0, 1],
                 preassigned_room_id=None,
             ),
         ]
-        config = _default_config(block_b_restriction_for_pos=False)
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.allocations == [(101, 1)]
-        assert pass1.unassigned_groups == []
-
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
+        config = _default_config(
+            split_class_penalty=100.0,
+            waste_penalty=1.0,
         )
-        assert pass2.status == "skipped"
+        result = run_solver(config, timeslots, rooms, groups)
 
+        assert result.status in ("optimal", "feasible")
+        # 102 deve ficar integralmente na sala 2 para evitar a penalidade de split.
+        assert (102, 2) in result.allocations
+        assert 102 not in result.unassigned_groups
 
-class TestPass2StrictCapacity:
-    """Cenário M: Capacidade strict no Passe 2."""
-
-    def test_strict_capacity_blocks_overflow_in_pass2(self) -> None:
+    def test_low_split_class_penalty_allows_split(self) -> None:
         timeslots = [
             TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+            TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
         ]
         rooms = [
-            RoomData(id=1, name="A242", capacity=40),
+            RoomData(id=1, name="A242", capacity=30),
+            RoomData(id=2, name="B09", capacity=40),
         ]
         groups = [
             GroupData(
                 id=101,
                 tiptur="Graduacao",
-                demand=50,
+                demand=30,
                 has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
-                preassigned_room_id=None,
+                preassigned_room_id=1,
             ),
-        ]
-        config = _default_config(strict_capacity=True)
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.unassigned_groups == [101]
-
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
-        )
-        assert pass2.status in ("optimal", "feasible")
-        assert pass2.suggestions == []
-
-    def test_relaxed_capacity_allows_overflow_in_pass2(self) -> None:
-        timeslots = [
-            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
-        ]
-        rooms = [
-            RoomData(id=1, name="A242", capacity=40),
-        ]
-        groups = [
             GroupData(
-                id=101,
+                id=102,
                 tiptur="Graduacao",
-                demand=50,
+                demand=30,
                 has_null_enrollment=False,
                 is_freshmen=False,
-                timeslot_ids=[0],
+                timeslot_ids=[0, 1],
                 preassigned_room_id=None,
             ),
         ]
-        config = _default_config(strict_capacity=False)
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.allocations == [(101, 1)]
-        assert pass1.unassigned_groups == []
-
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
+        # Com split_class_penalty menor que o waste poupado, o solver pode
+        # dividir 102 entre as salas 2 (seg) e 1 (ter).
+        config = _default_config(
+            split_class_penalty=5.0,
+            waste_penalty=1.0,
         )
-        assert pass2.status == "skipped"
+        result = run_solver(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert 102 in result.unassigned_groups
+        suggestions_for_102 = {s[1:3] for s in result.suggestions if s[0] == 102}
+        assert (0, 2) in suggestions_for_102
+        assert (1, 1) in suggestions_for_102
 
 
-class TestPass2NoOverlapWithFixed:
-    """Cenário N: Intervalos fixos do Passe 1 bloqueiam sugestões no Passe 2."""
+class TestScenarioNoOverlapWithFixed:
+    """Cenário N: Intervalos fixos bloqueiam alocações no mesmo horário."""
 
     def test_fixed_interval_blocks_same_timeslot(self) -> None:
         timeslots = [
@@ -1035,22 +883,14 @@ class TestPass2NoOverlapWithFixed:
             ),
         ]
         config = _default_config()
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.allocations == [(101, 1)]
-        assert pass1.unassigned_groups == [102]
+        result = run_solver(config, timeslots, rooms, groups)
 
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
-        )
         # A sala 1 está ocupada no timeslot 0 pelo grupo 101 (fixo).
-        # Não há outra sala, então 102 não recebe sugestão.
-        assert pass2.status in ("optimal", "feasible")
-        assert pass2.suggestions == []
+        # Não há outra sala, então 102 fica totalmente sem sala.
+        assert result.status in ("optimal", "feasible")
+        assert (101, 1) in result.allocations
+        assert result.unassigned_groups == [102]
+        assert result.suggestions == []
 
     def test_fixed_interval_allows_different_timeslot(self) -> None:
         timeslots = [
@@ -1063,8 +903,7 @@ class TestPass2NoOverlapWithFixed:
         ]
         # Grupo 101 fixo na sala 1 no seg.
         # Grupo 102 precisa de seg e ter; sala 1 ocupada em ambos.
-        # Sala 2 livre em ambos, mas no Passe 1 o solver pode alocar 102 na sala 2.
-        # Para forçar unassigned, bloqueamos a sala 2 por capacidade.
+        # Sala 2 livre em ambos, mas bloqueada por capacidade.
         groups = [
             GroupData(
                 id=101,
@@ -1086,22 +925,14 @@ class TestPass2NoOverlapWithFixed:
             ),
         ]
         config = _default_config(strict_capacity=True)
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.allocations == [(101, 1)]
-        assert pass1.unassigned_groups == [102]
+        result = run_solver(config, timeslots, rooms, groups)
 
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
-        )
         # Sala 1 ocupada em ambos os timeslot; sala 2 não comporta demanda 60 (cap 50).
-        # Não há sugestões possíveis.
-        assert pass2.status in ("optimal", "feasible")
-        assert pass2.suggestions == []
+        # 102 fica totalmente sem sala.
+        assert result.status in ("optimal", "feasible")
+        assert (101, 1) in result.allocations
+        assert result.unassigned_groups == [102]
+        assert result.suggestions == []
 
 
 class TestScenarioCohortSameRoom:
@@ -1140,7 +971,7 @@ class TestScenarioCohortSameRoom:
         ]
         # Penalidade alta o suficiente para manter o coorte unido.
         config = _default_config(split_cohort_penalty=1000.0)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -1184,7 +1015,7 @@ class TestScenarioCohortCanSplitWhenPenaltyZero:
             ),
         ]
         config = _default_config(split_cohort_penalty=0.0)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -1228,7 +1059,7 @@ class TestScenarioCohortSplitsWhenNoSingleRoomFits:
             ),
         ]
         config = _default_config(split_cohort_penalty=100.0)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -1272,7 +1103,7 @@ class TestScenarioCohortSplitPenaltyInObjective:
         ]
         split_penalty = 100.0
         config = _default_config(split_cohort_penalty=split_penalty)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -1313,7 +1144,7 @@ class TestScenarioCohortPriority:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -1342,7 +1173,7 @@ class TestScenarioBlockAFreshmenHardConstraint:
             ),
         ]
         config = _default_config(block_a_restriction_for_freshmen=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == []
@@ -1367,7 +1198,7 @@ class TestScenarioBlockAFreshmenHardConstraint:
             ),
         ]
         config = _default_config(block_a_restriction_for_freshmen=False)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -1392,7 +1223,7 @@ class TestScenarioBlockAFreshmenHardConstraint:
             ),
         ]
         config = _default_config(block_a_restriction_for_freshmen=True)
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -1425,7 +1256,7 @@ class TestScenarioUndergradPrefersBlockB:
             undergrad_in_block_a_penalty=1000.0,
             unassigned_penalty=2000.0,
         )
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 2)]
@@ -1457,7 +1288,7 @@ class TestScenarioUndergradAcceptsBlockAWhenNoOption:
             undergrad_in_block_a_penalty=1000.0,
             unassigned_penalty=2000.0,
         )
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -1491,7 +1322,7 @@ class TestScenarioPosGradPrefersBlockA:
             pos_in_block_b_penalty=1000.0,
             unassigned_penalty=2000.0,
         )
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
@@ -1533,7 +1364,7 @@ class TestScenarioCohortWithBlockedRoom:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         # O problema deve ser viável (não infeasible).
         # O grupo 101 está pré-alocado na sala 1 (bloqueada para auto).
@@ -1577,7 +1408,7 @@ class TestScenarioCohortWithBlockedRoom:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert len(result.allocations) == 2
@@ -1610,7 +1441,7 @@ class TestScenarioRoomNotAvailableForAuto:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == []
@@ -1635,13 +1466,13 @@ class TestScenarioRoomNotAvailableForAuto:
             ),
         ]
         config = _default_config()
-        result = run_pass_1(config, timeslots, rooms, groups)
+        result = run_solver(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
         assert result.allocations == [(101, 1)]
         assert result.unassigned_groups == []
 
-    def test_blocked_room_in_pass2(self) -> None:
+    def test_blocked_room_cannot_be_suggested(self) -> None:
         timeslots = [
             TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
             TimeslotData(id=1, day="ter", start="08:00", end="09:40"),
@@ -1661,16 +1492,9 @@ class TestScenarioRoomNotAvailableForAuto:
             ),
         ]
         config = _default_config()
-        pass1 = run_pass_1(config, timeslots, rooms, groups)
-        assert pass1.unassigned_groups == [101]
+        result = run_solver(config, timeslots, rooms, groups)
 
-        pass2 = run_pass_2(
-            config,
-            timeslots,
-            rooms,
-            groups,
-            pass1.allocations,
-            pass1.unassigned_groups,
-        )
-        assert pass2.status in ("optimal", "feasible")
-        assert pass2.suggestions == []
+        # A sala está bloqueada para automática e não há pré-alocação.
+        assert result.status in ("optimal", "feasible")
+        assert result.unassigned_groups == [101]
+        assert result.suggestions == []

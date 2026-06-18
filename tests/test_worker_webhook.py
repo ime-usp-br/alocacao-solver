@@ -7,7 +7,7 @@ import fakeredis
 import httpx
 import pytest
 
-from app.solver.engine import Pass1Result
+from app.solver.engine import SolverResult
 from app.worker.processor import _send_webhook
 from app.worker.tasks import process_job
 
@@ -132,7 +132,7 @@ class TestProcessJobWebhook:
 
         with patch("app.worker.tasks.redis.from_url", return_value=fake_redis):
             with patch(
-                "app.worker.tasks.run_pass_1", side_effect=RuntimeError("Solver crash")
+                "app.worker.tasks.run_solver", side_effect=RuntimeError("Solver crash")
             ):
                 with patch("httpx.Client") as mock_client_class:
                     mock_client = MagicMock()
@@ -166,17 +166,18 @@ class TestProcessJobWebhook:
         def mock_webhook(url: str, payload: dict[str, Any]) -> None:
             call_order.append("webhook")
 
-        pass1_result = Pass1Result(
+        solver_result = SolverResult(
             status="optimal",
             solve_time_seconds=1.0,
             objective_value=100.0,
             allocations=[(101, 1)],
             unassigned_groups=[],
+            suggestions=[],
             solutions_found=1,
         )
 
         with patch("app.worker.tasks.redis.from_url", return_value=fake_redis):
-            with patch("app.worker.tasks.run_pass_1", return_value=pass1_result):
+            with patch("app.worker.tasks.run_solver", return_value=solver_result):
                 with patch(
                     "app.worker.tasks._save_result_to_redis",
                     side_effect=mock_save,
@@ -202,7 +203,7 @@ class TestProcessJobWebhook:
 
         with patch("app.worker.tasks.redis.from_url", return_value=fake_redis):
             with patch(
-                "app.worker.tasks.run_pass_1", side_effect=RuntimeError("Crash")
+                "app.worker.tasks.run_solver", side_effect=RuntimeError("Crash")
             ):
                 with patch(
                     "app.worker.tasks._save_result_to_redis",

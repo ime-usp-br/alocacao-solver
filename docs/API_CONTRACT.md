@@ -119,6 +119,13 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
   ]
 }
 *   **Nota sobre `status`:** Os status possíveis são `optimal` (perfeito), `feasible` (achou solução, mas bateu no tempo-limite), `stopped` (usuário abortou e resgatou a parcial), ou `infeasible` (impossível matematicamente).
+*   **Nota sobre semântica de `allocations` vs `suggestions`:**
+    *   Uma turma alocada 100% na mesma sala aparece em `allocations`.
+    *   Uma turma que ficou totalmente sem sala ou foi dividida entre salas
+        (split class) aparece em `unassigned_groups`.
+    *   Quando a turma sofreu divisão, suas alocações parciais vêm em
+        `suggestions` (uma entrada por `(group_id, timeslot_id, suggested_room_id)`).
+
 *   **Payload de Erro (Exception handling):**
 {
   "job_id": "uuid-1234-5678",
