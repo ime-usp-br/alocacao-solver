@@ -19,10 +19,9 @@ from app.api.schemas import (
 )
 from app.solver.engine import (
     GroupData,
-    Pass1Result,
-    Pass2Result,
     RoomData,
     SolverConfig,
+    SolverResult,
     TimeslotData,
 )
 
@@ -89,28 +88,25 @@ def _to_internal_groups(groups: list[Group]) -> list[GroupData]:
 
 def _build_solve_response(
     job_id: str,
-    pass1: Pass1Result,
-    pass2: Pass2Result,
+    result: SolverResult,
     global_status: str,
 ) -> dict[str, Any]:
     allocations = [
-        Allocation(group_id=g_id, room_id=r_id) for g_id, r_id in pass1.allocations
+        Allocation(group_id=g_id, room_id=r_id) for g_id, r_id in result.allocations
     ]
     suggestions = [
         Suggestion(group_id=g_id, timeslot_id=ts_id, suggested_room_id=r_id)
-        for g_id, ts_id, r_id in pass2.suggestions
+        for g_id, ts_id, r_id in result.suggestions
     ]
 
     response = SolveResponse(
         job_id=job_id,
         status=global_status,  # type: ignore[arg-type]
-        solve_time_seconds=round(
-            pass1.solve_time_seconds + pass2.solve_time_seconds, 3
-        ),
-        solutions_found=pass1.solutions_found + pass2.solutions_found,
-        objective_value=pass1.objective_value,
+        solve_time_seconds=round(result.solve_time_seconds, 3),
+        solutions_found=result.solutions_found,
+        objective_value=result.objective_value,
         allocations=allocations,
-        unassigned_groups=pass1.unassigned_groups,
+        unassigned_groups=result.unassigned_groups,
         suggestions=suggestions,
     )
     return response.model_dump(mode="json")

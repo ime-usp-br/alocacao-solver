@@ -1,4 +1,9 @@
-"""Motor matemático do Passe 1 (Alocação Estrita) usando OR-Tools CP-SAT."""
+"""Motor matemático unificado do solver usando OR-Tools CP-SAT.
+
+O modelo decide sobre a variável Y[g, t, r]: o grupo `g` utiliza a sala `r`
+no horário `t`. Isso permite que uma mesma turma ocupe salas diferentes em
+horários distintos (split class), eliminando a necessidade de dois passes.
+"""
 
 from __future__ import annotations
 
@@ -78,41 +83,35 @@ class SolverConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class Pass1Result:
+class SolverResult:
     status: str  # "optimal" | "feasible" | "infeasible"
     solve_time_seconds: float
     objective_value: float
     allocations: list[tuple[int, int]]  # (group_id, room_id)
     unassigned_groups: list[int]  # group_ids
-    solutions_found: int
-
-
-@dataclass(frozen=True, slots=True)
-class Pass2Result:
-    status: str  # "optimal" | "feasible" | "infeasible" | "skipped"
-    solve_time_seconds: float
     suggestions: list[tuple[int, int, int]]  # (group_id, timeslot_id, room_id)
     solutions_found: int
 
 
 # ---------------------------------------------------------------------------
-# Função principal do Passe 1
+# Função principal do solver unificado
 # ---------------------------------------------------------------------------
 
 
-def run_pass_1(
+def run_solver(
     config: SolverConfig,
     timeslots: list[TimeslotData],
     rooms: list[RoomData],
     groups: list[GroupData],
     callback: cp_model.CpSolverSolutionCallback | None = None,
-) -> Pass1Result:
+) -> SolverResult:
     """
-    Executa o Passe 1 de alocação estrita.
+    Executa o solver unificado com variável Y[g, t, r].
 
-    Cada grupo recebe exatamente uma sala (ou fica unassigned).
-    Conflitos de horário são resolvidos via AddNoOverlap com
-    NewOptionalIntervalVar para performance O(N log N).
+    Cada (grupo, horário) pode receber no máximo uma sala, permitindo que uma
+    turma seja dividida entre salas distintas. O modelo minimiza o custo
+    composto por: grupos sem sala, divisão de turmas, divisão de coortes,
+    claustrofobia e desperdício de assentos.
     """
     from app.solver.utils import build_global_minutes
 
@@ -135,27 +134,30 @@ def run_pass_1(
     # -----------------------------------------------------------------------
     # Variáveis de decisão
     # -----------------------------------------------------------------------
-    X: dict[tuple[int, int], cp_model.IntVar] = {}
+    Y: dict[tuple[int, int, int], cp_model.IntVar] = {}
     for g in groups:
-        for r in rooms:
-            X[(g.id, r.id)] = model.NewBoolVar(f"X_{g.id}_{r.id}")
-
-    U: dict[int, cp_model.IntVar] = {}
-    for g in groups:
-        U[g.id] = model.NewBoolVar(f"U_{g.id}")
+        for ts_id in g.timeslot_ids:
+            for r in rooms:
+                Y[(g.id, ts_id, r.id)] = model.NewBoolVar(f"Y_{g.id}_{ts_id}_{r.id}")
 
     # -----------------------------------------------------------------------
-    # Restrição 1: Atribuição única
+    # Restrição 1: Cada (grupo, horário) é alocado ou fica sem sala
     # -----------------------------------------------------------------------
+    V: dict[tuple[int, int], cp_model.IntVar] = {}
     for g in groups:
-        model.Add(sum(X[(g.id, r.id)] for r in rooms) + U[g.id] == 1)
+        for ts_id in g.timeslot_ids:
+            V[(g.id, ts_id)] = model.NewBoolVar(f"V_{g.id}_{ts_id}")
+            model.Add(
+                sum(Y[(g.id, ts_id, r.id)] for r in rooms) + V[(g.id, ts_id)] == 1
+            )
 
     # -----------------------------------------------------------------------
     # Restrição 2: Pré-alocação (trava manual)
     # -----------------------------------------------------------------------
     for g in groups:
         if g.preassigned_room_id is not None:
-            model.Add(X[(g.id, g.preassigned_room_id)] == 1)
+            for ts_id in g.timeslot_ids:
+                model.Add(Y[(g.id, ts_id, g.preassigned_room_id)] == 1)
 
     # -----------------------------------------------------------------------
     # Restrição 2.5: Salas bloqueadas para distribuição automática
@@ -164,7 +166,8 @@ def run_pass_1(
         if g.preassigned_room_id is None:  # Turma automática
             for r in rooms:
                 if not r.available_for_auto:
-                    model.Add(X[(g.id, r.id)] == 0)
+                    for ts_id in g.timeslot_ids:
+                        model.Add(Y[(g.id, ts_id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
     # Restrição 3: Conflitos de horário (AddNoOverlap)
@@ -172,16 +175,16 @@ def run_pass_1(
     room_intervals: dict[int, list[cp_model.IntervalVar]] = {r.id: [] for r in rooms}
 
     for g in groups:
-        for r in rooms:
-            for ts_id in g.timeslot_ids:
-                start_global, end_global = global_minutes[ts_id]
-                size = end_global - start_global
+        for ts_id in g.timeslot_ids:
+            start_global, end_global = global_minutes[ts_id]
+            size = end_global - start_global
 
+            for r in rooms:
                 interval = model.NewOptionalIntervalVar(
                     start=start_global,
                     size=size,
                     end=end_global,
-                    is_present=X[(g.id, r.id)],
+                    is_present=Y[(g.id, ts_id, r.id)],
                     name=f"interval_g{g.id}_r{r.id}_t{ts_id}",
                 )
                 room_intervals[r.id].append(interval)
@@ -200,8 +203,8 @@ def run_pass_1(
                     if g.preassigned_room_id == r.id:
                         continue
                     if r.capacity < g.demand:
-                        # Sala é muito pequena: forçar X == 0
-                        model.Add(X[(g.id, r.id)] == 0)
+                        for ts_id in g.timeslot_ids:
+                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
     # Restrição 5: Regra do Bloco B
@@ -213,7 +216,8 @@ def run_pass_1(
                     if g.preassigned_room_id == r.id:
                         continue
                     if r.name.strip().upper().startswith("B"):
-                        model.Add(X[(g.id, r.id)] == 0)
+                        for ts_id in g.timeslot_ids:
+                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
     # Restrição 5.5: Proteção de Calouros no Bloco A
@@ -225,7 +229,8 @@ def run_pass_1(
                     if g.preassigned_room_id == r.id:
                         continue
                     if r.name.strip().upper().startswith("A"):
-                        model.Add(X[(g.id, r.id)] == 0)
+                        for ts_id in g.timeslot_ids:
+                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
     # Restrição 6: Coortes (same_room_cohort) — Soft Constraint
@@ -247,22 +252,49 @@ def run_pass_1(
         for r in rooms:
             Z[r.id] = model.NewBoolVar(f"Z_{cohort}_{r.id}")
 
-            # Se algum membro usa a sala, Z deve valer 1.
             for g in members:
-                model.Add(Z[r.id] >= X[(g.id, r.id)])
+                for ts_id in g.timeslot_ids:
+                    model.Add(Z[r.id] >= Y[(g.id, ts_id, r.id)])
 
-            # Se nenhum membro usa a sala, Z deve valer 0.
-            model.Add(Z[r.id] <= sum(X[(g.id, r.id)] for g in members))
+            model.Add(
+                Z[r.id]
+                <= sum(
+                    Y[(g.id, ts_id, r.id)] for g in members for ts_id in g.timeslot_ids
+                )
+            )
 
-        # Número de salas distintas efetivamente utilizadas pelo coorte.
         num_rooms_used = sum(Z[r.id] for r in rooms)
-
-        # Penalidade por cada sala adicional além da primeira.
         extra_rooms = model.NewIntVar(0, len(rooms), f"extra_rooms_{cohort}")
         model.Add(extra_rooms >= num_rooms_used - 1)
         model.Add(extra_rooms >= 0)
 
         cost_cohort_split += extra_rooms * split_cohort_penalty_int
+
+    # -----------------------------------------------------------------------
+    # Restrição 7: Split Class — Soft Constraint
+    # -----------------------------------------------------------------------
+    cost_class_split = 0
+    split_class_penalty_int = int(config.split_class_penalty * SCALE)
+
+    for g in groups:
+        # Z_class[g, r] = 1 se o grupo usar a sala r em algum horário.
+        Z_class: dict[int, cp_model.IntVar] = {}
+        for r in rooms:
+            Z_class[r.id] = model.NewBoolVar(f"Z_class_{g.id}_{r.id}")
+
+            for ts_id in g.timeslot_ids:
+                model.Add(Z_class[r.id] >= Y[(g.id, ts_id, r.id)])
+
+            model.Add(
+                Z_class[r.id] <= sum(Y[(g.id, ts_id, r.id)] for ts_id in g.timeslot_ids)
+            )
+
+        num_rooms_used = sum(Z_class[r.id] for r in rooms)
+        extra_rooms = model.NewIntVar(0, len(rooms), f"extra_class_{g.id}")
+        model.Add(extra_rooms >= num_rooms_used - 1)
+        model.Add(extra_rooms >= 0)
+
+        cost_class_split += extra_rooms * split_class_penalty_int
 
     # -----------------------------------------------------------------------
     # Função Objetivo (com SCALE para evitar floats no CP-SAT)
@@ -271,9 +303,18 @@ def run_pass_1(
     claustrophobia_penalty_int = int(config.claustrophobia_penalty * SCALE)
     waste_penalty_int = int(config.waste_penalty * SCALE)
 
+    max_ts = max((len(g.timeslot_ids) for g in groups), default=1)
+    # A penalidade por horário sem sala é proporcional à penalidade de grupo
+    # sem sala, garantindo que deixar todos os horários de um grupo sem sala
+    # custe pelo menos `unassigned_penalty`.
+    slot_unassigned_penalty_int = (unassigned_penalty_int + max_ts - 1) // max_ts
+
     cost_unassigned = sum(
-        U[g.id] * unassigned_penalty_int * (1000 if g.same_room_cohort else 1)
+        V[(g.id, ts_id)]
+        * slot_unassigned_penalty_int
+        * (1000 if g.same_room_cohort else 1)
         for g in groups
+        for ts_id in g.timeslot_ids
     )
 
     # -----------------------------------------------------------------------
@@ -289,14 +330,16 @@ def run_pass_1(
             free_seats_min = int(r.capacity * config.comfort_zone_min_percent / 100)
             free_seats_max = int(r.capacity * config.comfort_zone_max_percent / 100)
 
+            slots_for_room = sum(Y[(g.id, ts_id, r.id)] for ts_id in g.timeslot_ids)
+
             if free_seats < free_seats_min:
                 max_comfort_demand = r.capacity - free_seats_min
                 excess = max(0, g.demand - max_comfort_demand)
-                cost_piecewise += X[(g.id, r.id)] * excess * claustrophobia_penalty_int
+                cost_piecewise += slots_for_room * excess * claustrophobia_penalty_int
             elif free_seats > free_seats_max:
                 min_comfort_demand = r.capacity - free_seats_max
                 excess = max(0, min_comfort_demand - g.demand)
-                cost_piecewise += X[(g.id, r.id)] * excess * waste_penalty_int
+                cost_piecewise += slots_for_room * excess * waste_penalty_int
             # else: dentro da zona de conforto, custo = 0
 
     # -----------------------------------------------------------------------
@@ -309,12 +352,19 @@ def run_pass_1(
     for g in groups:
         tipo = _sanitize_tiptur(g.tiptur)
         for r in rooms:
-            if tipo == "graduacao" and r.name.strip().upper().startswith("A"):
-                cost_directional += X[(g.id, r.id)] * undergrad_penalty_int
-            if tipo == "pos graduacao" and r.name.strip().upper().startswith("B"):
-                cost_directional += X[(g.id, r.id)] * pos_penalty_int
+            for ts_id in g.timeslot_ids:
+                if tipo == "graduacao" and r.name.strip().upper().startswith("A"):
+                    cost_directional += Y[(g.id, ts_id, r.id)] * undergrad_penalty_int
+                if tipo == "pos graduacao" and r.name.strip().upper().startswith("B"):
+                    cost_directional += Y[(g.id, ts_id, r.id)] * pos_penalty_int
 
-    model.Minimize(cost_unassigned + cost_piecewise + cost_directional + cost_cohort_split)
+    model.Minimize(
+        cost_unassigned
+        + cost_piecewise
+        + cost_directional
+        + cost_cohort_split
+        + cost_class_split
+    )
 
     # -----------------------------------------------------------------------
     # Resolver
@@ -341,12 +391,13 @@ def run_pass_1(
         )
 
     if result_status == "infeasible":
-        return Pass1Result(
+        return SolverResult(
             status="infeasible",
             solve_time_seconds=solve_time,
             objective_value=0.0,
             allocations=[],
             unassigned_groups=[],
+            suggestions=[],
             solutions_found=0,
         )
 
@@ -355,16 +406,29 @@ def run_pass_1(
     # -----------------------------------------------------------------------
     allocations: list[tuple[int, int]] = []
     unassigned_groups: list[int] = []
+    suggestions: list[tuple[int, int, int]] = []
 
     for g in groups:
-        assigned = False
-        for r in rooms:
-            if solver.Value(X[(g.id, r.id)]) == 1:
-                allocations.append((g.id, r.id))
-                assigned = True
-                break
-        if not assigned:
+        assigned_slots: list[tuple[int, int]] = []
+        for ts_id in g.timeslot_ids:
+            for r in rooms:
+                if solver.Value(Y[(g.id, ts_id, r.id)]) == 1:
+                    assigned_slots.append((ts_id, r.id))
+                    break
+
+        if not assigned_slots:
             unassigned_groups.append(g.id)
+            continue
+
+        unique_rooms = {r_id for _, r_id in assigned_slots}
+        fully_assigned = len(assigned_slots) == len(g.timeslot_ids)
+
+        if fully_assigned and len(unique_rooms) == 1:
+            allocations.append((g.id, unique_rooms.pop()))
+        else:
+            unassigned_groups.append(g.id)
+            for ts_id, r_id in assigned_slots:
+                suggestions.append((g.id, ts_id, r_id))
 
     raw_objective = solver.ObjectiveValue() if hasattr(solver, "ObjectiveValue") else 0
     # Desescalar para retornar valor próximo ao original
@@ -372,257 +436,12 @@ def run_pass_1(
 
     solutions_found = callback.solution_count if callback else 1
 
-    return Pass1Result(
+    return SolverResult(
         status=result_status,
         solve_time_seconds=solve_time,
         objective_value=objective_value,
         allocations=allocations,
         unassigned_groups=unassigned_groups,
-        solutions_found=solutions_found,
-    )
-
-
-def run_pass_2(
-    config: SolverConfig,
-    timeslots: list[TimeslotData],
-    rooms: list[RoomData],
-    groups: list[GroupData],
-    pass1_allocations: list[tuple[int, int]],
-    pass1_unassigned_groups: list[int],
-    callback: cp_model.CpSolverSolutionCallback | None = None,
-) -> Pass2Result:
-    """
-    Executa o Passe 2 de sugestão de quebras de horários (Best Effort).
-
-    Grupos que ficaram unassigned no Passe 1 podem ser alocados em salas
-    diferentes para cada timeslot. O modelo maximiza o número de alocações
-    e, entre soluções equivalentes, minimiza o desperdício de assentos.
-
-    Nota sobre coortes (same_room_cohort):
-    A restrição de "mesma sala" é intencionalmente relaxada no Passe 2.
-    Se uma coorte chegou ao Passe 2 como unassigned, é prova matemática
-    de que não existe nenhuma sala viável para todos os seus horários
-    simultaneamente. O Passe 2 atua como fallback de resgate, permitindo
-    quebra de horários, mas mantém prioridade absoluta para grupos de
-    coorte via multiplicador agressivo na recompensa (reward_g).
-    """
-    from app.solver.utils import build_global_minutes
-
-    if not pass1_unassigned_groups:
-        return Pass2Result(
-            status="skipped",
-            solve_time_seconds=0.0,
-            suggestions=[],
-            solutions_found=0,
-        )
-
-    # -----------------------------------------------------------------------
-    # Pré-processamento de tempo
-    # -----------------------------------------------------------------------
-    timeslot_dicts = [
-        {"id": ts.id, "day": ts.day, "start": ts.start, "end": ts.end}
-        for ts in timeslots
-    ]
-    global_minutes = build_global_minutes(timeslot_dicts)
-
-    # -----------------------------------------------------------------------
-    # Mapeamentos rápidos
-    # -----------------------------------------------------------------------
-    group_by_id: dict[int, GroupData] = {g.id: g for g in groups}
-    g_unassigned = [
-        group_by_id[g_id] for g_id in pass1_unassigned_groups if g_id in group_by_id
-    ]
-
-    # -----------------------------------------------------------------------
-    # Modelo e Solver
-    # -----------------------------------------------------------------------
-    model = cp_model.CpModel()
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = config.time_limit_seconds
-
-    # -----------------------------------------------------------------------
-    # Intervalos FIXOS do Passe 1 (ocupam tempo fisicamente)
-    # -----------------------------------------------------------------------
-    room_intervals: dict[int, list[cp_model.IntervalVar]] = {r.id: [] for r in rooms}
-
-    for g_id, r_id in pass1_allocations:
-        g = group_by_id.get(g_id)
-        if g is None:
-            continue
-        for ts_id in g.timeslot_ids:
-            start_global, end_global = global_minutes[ts_id]
-            size = end_global - start_global
-            fixed_interval = model.NewIntervalVar(
-                start=start_global,
-                size=size,
-                end=end_global,
-                name=f"fixed_g{g_id}_r{r_id}_t{ts_id}",
-            )
-            room_intervals[r_id].append(fixed_interval)
-
-    # -----------------------------------------------------------------------
-    # Variáveis de decisão Y[g, t, r]
-    # -----------------------------------------------------------------------
-    Y: dict[tuple[int, int, int], cp_model.IntVar] = {}
-    for g in g_unassigned:
-        for ts_id in g.timeslot_ids:
-            for r in rooms:
-                Y[(g.id, ts_id, r.id)] = model.NewBoolVar(f"Y_{g.id}_{ts_id}_{r.id}")
-
-    # -----------------------------------------------------------------------
-    # Restrição 1: No máximo 1 sala por timeslot (Best Effort)
-    # -----------------------------------------------------------------------
-    for g in g_unassigned:
-        for ts_id in g.timeslot_ids:
-            model.Add(sum(Y[(g.id, ts_id, r.id)] for r in rooms) <= 1)
-
-    # -----------------------------------------------------------------------
-    # Restrição 2: AddNoOverlap (fixos + opcionais do Passe 2)
-    # -----------------------------------------------------------------------
-    for g in g_unassigned:
-        for r in rooms:
-            for ts_id in g.timeslot_ids:
-                start_global, end_global = global_minutes[ts_id]
-                size = end_global - start_global
-                optional_interval = model.NewOptionalIntervalVar(
-                    start=start_global,
-                    size=size,
-                    end=end_global,
-                    is_present=Y[(g.id, ts_id, r.id)],
-                    name=f"opt_g{g.id}_r{r.id}_t{ts_id}",
-                )
-                room_intervals[r.id].append(optional_interval)
-
-    for r in rooms:
-        if room_intervals[r.id]:
-            model.AddNoOverlap(room_intervals[r.id])
-
-    # -----------------------------------------------------------------------
-    # Restrição 3: Capacidade da sala
-    # -----------------------------------------------------------------------
-    if config.strict_capacity:
-        for g in g_unassigned:
-            if not g.has_null_enrollment:
-                for r in rooms:
-                    if r.capacity < g.demand:
-                        for ts_id in g.timeslot_ids:
-                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
-
-    # -----------------------------------------------------------------------
-    # Restrição 4: Regra do Bloco B
-    # -----------------------------------------------------------------------
-    if config.block_b_restriction_for_pos:
-        for g in g_unassigned:
-            if _sanitize_tiptur(g.tiptur) == "pos graduacao":
-                for r in rooms:
-                    if r.name.strip().upper().startswith("B"):
-                        for ts_id in g.timeslot_ids:
-                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
-
-    # -----------------------------------------------------------------------
-    # Restrição 4.5: Proteção de Calouros no Bloco A
-    # -----------------------------------------------------------------------
-    if config.block_a_restriction_for_freshmen:
-        for g in g_unassigned:
-            if g.is_freshmen:
-                for r in rooms:
-                    if r.name.strip().upper().startswith("A"):
-                        for ts_id in g.timeslot_ids:
-                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
-
-    # -----------------------------------------------------------------------
-    # Restrição 4.6: Salas bloqueadas para distribuição automática
-    # -----------------------------------------------------------------------
-    for g in g_unassigned:
-        for r in rooms:
-            if not r.available_for_auto:
-                for ts_id in g.timeslot_ids:
-                    model.Add(Y[(g.id, ts_id, r.id)] == 0)
-
-    # -----------------------------------------------------------------------
-    # Função Objetivo: Maximizar alocações (via recompensa gigante)
-    # -----------------------------------------------------------------------
-    waste_penalty_int = int(config.waste_penalty * SCALE)
-    # Recompensa deve ser muito maior que qualquer custo de waste possível
-    max_possible_waste = max(r.capacity for r in rooms) * waste_penalty_int
-    reward = max_possible_waste + (10_000_000 * SCALE)
-
-    cost = 0
-    for g in g_unassigned:
-        reward_g = reward * (1000 if g.same_room_cohort else 1)
-        for ts_id in g.timeslot_ids:
-            for r in rooms:
-                waste = max(0, r.capacity - g.demand)
-                # Minimizar (waste - reward_g) quando Y == 1
-                # Como reward_g >> waste, isso efetivamente maximiza Y
-                coeff = (waste * waste_penalty_int) - reward_g
-                cost += Y[(g.id, ts_id, r.id)] * coeff
-
-    # -----------------------------------------------------------------------
-    # Penalidades Direcionais no Passe 2 (Soft Constraints)
-    # -----------------------------------------------------------------------
-    undergrad_penalty_int = int(config.undergrad_in_block_a_penalty * SCALE)
-    pos_penalty_int = int(config.pos_in_block_b_penalty * SCALE)
-
-    for g in g_unassigned:
-        tipo = _sanitize_tiptur(g.tiptur)
-        for r in rooms:
-            if tipo == "graduacao" and r.name.strip().upper().startswith("A"):
-                for ts_id in g.timeslot_ids:
-                    cost += Y[(g.id, ts_id, r.id)] * undergrad_penalty_int
-            if tipo == "pos graduacao" and r.name.strip().upper().startswith("B"):
-                for ts_id in g.timeslot_ids:
-                    cost += Y[(g.id, ts_id, r.id)] * pos_penalty_int
-
-    model.Minimize(cost)
-
-    # -----------------------------------------------------------------------
-    # Resolver
-    # -----------------------------------------------------------------------
-    start_solve = time.time()
-    if callback is not None:
-        status = solver.Solve(model, callback)
-    else:
-        status = solver.Solve(model)
-    solve_time = time.time() - start_solve
-
-    # -----------------------------------------------------------------------
-    # Mapear status
-    # -----------------------------------------------------------------------
-    if status == cp_model.OPTIMAL:
-        result_status = "optimal"
-    elif status == cp_model.FEASIBLE:
-        result_status = "feasible"
-    elif status == cp_model.INFEASIBLE:
-        result_status = "infeasible"
-    else:
-        raise SolverException(
-            f"Status inesperado do CP-SAT no Passe 2: {status} ({solver.StatusName(status)})"
-        )
-
-    if result_status == "infeasible":
-        return Pass2Result(
-            status="infeasible",
-            solve_time_seconds=solve_time,
-            suggestions=[],
-            solutions_found=0,
-        )
-
-    # -----------------------------------------------------------------------
-    # Extrair sugestões
-    # -----------------------------------------------------------------------
-    suggestions: list[tuple[int, int, int]] = []
-    for g in g_unassigned:
-        for ts_id in g.timeslot_ids:
-            for r in rooms:
-                if solver.Value(Y[(g.id, ts_id, r.id)]) == 1:
-                    suggestions.append((g.id, ts_id, r.id))
-
-    solutions_found = callback.solution_count if callback else 1
-
-    return Pass2Result(
-        status=result_status,
-        solve_time_seconds=solve_time,
         suggestions=suggestions,
         solutions_found=solutions_found,
     )
