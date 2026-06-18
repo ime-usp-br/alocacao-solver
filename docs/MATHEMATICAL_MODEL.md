@@ -40,8 +40,18 @@ A alocação de salas é dividida em dois passes (Two-Pass Solver). O Passe 1 te
     *   `P[g] = 1000` se `g.same_room_cohort` não for `None`.
     *   `P[g] = 1` caso contrário.
 *   Custo de Grupos sem Sala (Prioridade Máxima): `C_u = Σ_g U[g] * config.unassigned_penalty * P[g]`.
-*   Custo de Desperdício de Assentos: `C_w = Σ_{g, r} X[g, r] * MAX(0, r.capacity - g.demand) * config.wasted_seats_weight`.
-*   *Função a minimizar:* `C_total = C_u + C_w`.
+*   Custo de Ocupação Piecewise: `C_p = Σ_{g, r} X[g, r] * piecewise(g, r)`.
+    *   `free_seats = r.capacity - g.demand`
+    *   `free_seats_min = r.capacity * comfort_zone_min_percent / 100`
+    *   `free_seats_max = r.capacity * comfort_zone_max_percent / 100`
+    *   Se `free_seats < free_seats_min`:
+        *   `excess = MAX(0, g.demand - (r.capacity - free_seats_min))`
+        *   `piecewise(g, r) = excess * claustrophobia_penalty`
+    *   Se `free_seats > free_seats_max`:
+        *   `excess = MAX(0, (r.capacity - free_seats_max) - g.demand)`
+        *   `piecewise(g, r) = excess * waste_penalty`
+    *   Caso contrário (zona de conforto): `piecewise(g, r) = 0`.
+*   *Função a minimizar:* `C_total = C_u + C_p`.
 
 ---
 

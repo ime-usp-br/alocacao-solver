@@ -556,6 +556,116 @@ class TestPass2Skipped:
         assert pass2.suggestions == []
 
 
+class TestScenarioPiecewisePrefersComfortZoneOverClaustrophobia:
+    """Issue #40: solver prefere sala dentro da zona de conforto vs claustrofobia."""
+
+    def test_prefers_comfort_zone_over_claustrophobia(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            # Sala que causaria claustrofobia (margem livre = 6.25% < 10%)
+            RoomData(id=1, name="A242", capacity=32),
+            # Sala dentro da zona de conforto (margem livre = 25%)
+            RoomData(id=2, name="B09", capacity=40),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(
+            comfort_zone_min_percent=10.0,
+            comfort_zone_max_percent=25.0,
+            claustrophobia_penalty=100.0,
+            waste_penalty=1.0,
+        )
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 2)]
+        assert result.unassigned_groups == []
+
+
+class TestScenarioPiecewisePrefersComfortZoneOverWaste:
+    """Issue #40: solver prefere sala dentro da zona de conforto vs waste excessivo."""
+
+    def test_prefers_comfort_zone_over_waste(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            # Sala que causaria waste (margem livre = 50% > 25%)
+            RoomData(id=1, name="A242", capacity=60),
+            # Sala dentro da zona de conforto (margem livre = 25%)
+            RoomData(id=2, name="B09", capacity=40),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(
+            comfort_zone_min_percent=10.0,
+            comfort_zone_max_percent=25.0,
+            claustrophobia_penalty=100.0,
+            waste_penalty=10.0,
+        )
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 2)]
+        assert result.unassigned_groups == []
+
+
+class TestScenarioPiecewiseComfortZoneHasZeroCost:
+    """Issue #40: alocação dentro da zona de conforto gera custo zero."""
+
+    def test_comfort_zone_allocation_has_zero_cost(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            # Sala dentro da zona de conforto (margem livre = 25%)
+            RoomData(id=1, name="A242", capacity=40),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=30,
+                has_null_enrollment=False,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(
+            comfort_zone_min_percent=10.0,
+            comfort_zone_max_percent=25.0,
+            claustrophobia_penalty=100.0,
+            waste_penalty=10.0,
+        )
+        result = run_pass_1(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 1)]
+        assert result.unassigned_groups == []
+        assert result.objective_value == 0.0
+
+
 class TestScenarioPreassignedOverridesCapacity:
     """Pré-alocação manual deve ignorar restrição de capacidade."""
 

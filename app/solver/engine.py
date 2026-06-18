@@ -254,6 +254,7 @@ def run_pass_1(
     # Função Objetivo (com SCALE para evitar floats no CP-SAT)
     # -----------------------------------------------------------------------
     unassigned_penalty_int = int(config.unassigned_penalty * SCALE)
+    claustrophobia_penalty_int = int(config.claustrophobia_penalty * SCALE)
     waste_penalty_int = int(config.waste_penalty * SCALE)
 
     cost_unassigned = sum(
@@ -261,12 +262,28 @@ def run_pass_1(
         for g in groups
     )
 
-    cost_waste = 0
+    # -----------------------------------------------------------------------
+    # Função Objetivo Piecewise (ocupação de salas)
+    # -----------------------------------------------------------------------
+    cost_piecewise = 0
     for g in groups:
         for r in rooms:
-            waste = max(0, r.capacity - g.demand)
-            if waste > 0:
-                cost_waste += X[(g.id, r.id)] * waste * waste_penalty_int
+            if r.capacity == 0:
+                continue
+
+            free_seats = r.capacity - g.demand
+            free_seats_min = int(r.capacity * config.comfort_zone_min_percent / 100)
+            free_seats_max = int(r.capacity * config.comfort_zone_max_percent / 100)
+
+            if free_seats < free_seats_min:
+                max_comfort_demand = r.capacity - free_seats_min
+                excess = max(0, g.demand - max_comfort_demand)
+                cost_piecewise += X[(g.id, r.id)] * excess * claustrophobia_penalty_int
+            elif free_seats > free_seats_max:
+                min_comfort_demand = r.capacity - free_seats_max
+                excess = max(0, min_comfort_demand - g.demand)
+                cost_piecewise += X[(g.id, r.id)] * excess * waste_penalty_int
+            # else: dentro da zona de conforto, custo = 0
 
     # -----------------------------------------------------------------------
     # Penalidades Direcionais (Soft Constraints)
@@ -283,7 +300,7 @@ def run_pass_1(
             if tipo == "pos graduacao" and r.name.strip().upper().startswith("B"):
                 cost_directional += X[(g.id, r.id)] * pos_penalty_int
 
-    model.Minimize(cost_unassigned + cost_waste + cost_directional)
+    model.Minimize(cost_unassigned + cost_piecewise + cost_directional)
 
     # -----------------------------------------------------------------------
     # Resolver
