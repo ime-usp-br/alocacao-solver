@@ -67,9 +67,14 @@ class SolverConfig:
     block_a_restriction_for_freshmen: bool
     undergrad_in_block_a_penalty: float
     pos_in_block_b_penalty: float
-    wasted_seats_weight: float
+    waste_penalty: float
     unassigned_penalty: float
     time_limit_seconds: int
+    claustrophobia_penalty: float = 0.0
+    comfort_zone_min_percent: float = 0.0
+    comfort_zone_max_percent: float = 0.0
+    split_class_penalty: float = 0.0
+    split_cohort_penalty: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,7 +254,7 @@ def run_pass_1(
     # Função Objetivo (com SCALE para evitar floats no CP-SAT)
     # -----------------------------------------------------------------------
     unassigned_penalty_int = int(config.unassigned_penalty * SCALE)
-    wasted_seats_weight_int = int(config.wasted_seats_weight * SCALE)
+    waste_penalty_int = int(config.waste_penalty * SCALE)
 
     cost_unassigned = sum(
         U[g.id] * unassigned_penalty_int * (1000 if g.same_room_cohort else 1)
@@ -261,7 +266,7 @@ def run_pass_1(
         for r in rooms:
             waste = max(0, r.capacity - g.demand)
             if waste > 0:
-                cost_waste += X[(g.id, r.id)] * waste * wasted_seats_weight_int
+                cost_waste += X[(g.id, r.id)] * waste * waste_penalty_int
 
     # -----------------------------------------------------------------------
     # Penalidades Direcionais (Soft Constraints)
@@ -506,9 +511,9 @@ def run_pass_2(
     # -----------------------------------------------------------------------
     # Função Objetivo: Maximizar alocações (via recompensa gigante)
     # -----------------------------------------------------------------------
-    wasted_seats_weight_int = int(config.wasted_seats_weight * SCALE)
+    waste_penalty_int = int(config.waste_penalty * SCALE)
     # Recompensa deve ser muito maior que qualquer custo de waste possível
-    max_possible_waste = max(r.capacity for r in rooms) * wasted_seats_weight_int
+    max_possible_waste = max(r.capacity for r in rooms) * waste_penalty_int
     reward = max_possible_waste + (10_000_000 * SCALE)
 
     cost = 0
@@ -519,7 +524,7 @@ def run_pass_2(
                 waste = max(0, r.capacity - g.demand)
                 # Minimizar (waste - reward_g) quando Y == 1
                 # Como reward_g >> waste, isso efetivamente maximiza Y
-                coeff = (waste * wasted_seats_weight_int) - reward_g
+                coeff = (waste * waste_penalty_int) - reward_g
                 cost += Y[(g.id, ts_id, r.id)] * coeff
 
     # -----------------------------------------------------------------------

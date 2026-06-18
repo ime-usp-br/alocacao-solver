@@ -36,9 +36,14 @@ def _to_internal_config(config: Any) -> SolverConfig:
         block_a_restriction_for_freshmen=config.config.block_a_restriction_for_freshmen,
         undergrad_in_block_a_penalty=config.config.undergrad_in_block_a_penalty,
         pos_in_block_b_penalty=config.config.pos_in_block_b_penalty,
-        wasted_seats_weight=config.config.wasted_seats_weight,
+        waste_penalty=config.config.waste_penalty,
         unassigned_penalty=config.config.unassigned_penalty,
         time_limit_seconds=config.config.time_limit_seconds,
+        claustrophobia_penalty=config.config.claustrophobia_penalty,
+        comfort_zone_min_percent=config.config.comfort_zone_min_percent,
+        comfort_zone_max_percent=config.config.comfort_zone_max_percent,
+        split_class_penalty=config.config.split_class_penalty,
+        split_cohort_penalty=config.config.split_cohort_penalty,
     )
 
 

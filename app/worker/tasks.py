@@ -93,9 +93,14 @@ def process_job(job_data: dict[str, Any]) -> None:
                 block_a_restriction_for_freshmen=config.block_a_restriction_for_freshmen,
                 undergrad_in_block_a_penalty=config.undergrad_in_block_a_penalty,
                 pos_in_block_b_penalty=config.pos_in_block_b_penalty,
-                wasted_seats_weight=config.wasted_seats_weight,
+                waste_penalty=config.waste_penalty,
                 unassigned_penalty=config.unassigned_penalty,
                 time_limit_seconds=remaining,
+                claustrophobia_penalty=config.claustrophobia_penalty,
+                comfort_zone_min_percent=config.comfort_zone_min_percent,
+                comfort_zone_max_percent=config.comfort_zone_max_percent,
+                split_class_penalty=config.split_class_penalty,
+                split_cohort_penalty=config.split_cohort_penalty,
             )
 
             pass2 = run_pass_2(

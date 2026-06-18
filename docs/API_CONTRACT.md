@@ -20,7 +20,12 @@ Este documento define os contratos HTTP e os schemas de dados para comunicação
     "block_a_restriction_for_freshmen": true,
     "undergrad_in_block_a_penalty": 500.0,
     "pos_in_block_b_penalty": 500.0,
-    "wasted_seats_weight": 1.5,
+    "waste_penalty": 1.5,
+    "claustrophobia_penalty": 0.0,
+    "comfort_zone_min_percent": 10.0,
+    "comfort_zone_max_percent": 25.0,
+    "split_class_penalty": 0.0,
+    "split_cohort_penalty": 0.0,
     "unassigned_penalty": 1000.0,
     "time_limit_seconds": 300
   },
