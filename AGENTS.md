@@ -33,3 +33,8 @@ Sempre que precisar executar, testar ou instalar pacotes, use estes comandos via
 - **Iniciar o Worker do RQ:** `poetry run rq worker`
 - **Rodar os Testes:** `poetry run pytest` (Mantenha a suíte de testes verde antes de finalizar uma tarefa)
 - **Linter e Formatação:** `poetry run ruff check .` e `poetry run ruff format .`
+
+### 🐳 Docker Compose (Desenvolvimento)
+O `docker-compose.yml` usa bind mount `.:/app` nos serviços `api` e `worker`, refletindo mudanças no código-fonte automaticamente nos containers sem rebuild:
+- **Build e subir ambiente:** `docker compose build api worker && docker compose up -d`
+- **Rodar testes dentro do container:** `docker exec <nome-do-container-api> poetry run pytest`
