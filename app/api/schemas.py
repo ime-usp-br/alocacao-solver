@@ -21,7 +21,12 @@ class Config(BaseModel):
     block_a_restriction_for_freshmen: bool
     undergrad_in_block_a_penalty: float = Field(..., ge=0)
     pos_in_block_b_penalty: float = Field(..., ge=0)
-    wasted_seats_weight: float = Field(..., ge=0)
+    waste_penalty: float = Field(..., ge=0)
+    claustrophobia_penalty: float = Field(..., ge=0)
+    comfort_zone_min_percent: float = Field(..., ge=0)
+    comfort_zone_max_percent: float = Field(..., ge=0)
+    split_class_penalty: float = Field(..., ge=0)
+    split_cohort_penalty: float = Field(..., ge=0)
     unassigned_penalty: float = Field(..., ge=0)
     time_limit_seconds: int = Field(..., ge=1)
 

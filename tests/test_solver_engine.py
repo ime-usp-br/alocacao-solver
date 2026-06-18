@@ -17,7 +17,7 @@ def _default_config(**overrides) -> SolverConfig:
         "block_a_restriction_for_freshmen": False,
         "undergrad_in_block_a_penalty": 0.0,
         "pos_in_block_b_penalty": 0.0,
-        "wasted_seats_weight": 1.0,
+        "waste_penalty": 1.0,
         "unassigned_penalty": 1000.0,
         "time_limit_seconds": 10,
     }
@@ -301,7 +301,7 @@ class TestScenarioObjectiveUnassignedPenalty:
         ]
         # Penalidade de unassigned é 1000 (default), waste é pequeno.
         # O solver deve alocar exatamente 1 grupo (cabe na sala) e deixar o outro unassigned.
-        config = _default_config(unassigned_penalty=1000, wasted_seats_weight=1)
+        config = _default_config(unassigned_penalty=1000, waste_penalty=1)
         result = run_pass_1(config, timeslots, rooms, groups)
 
         assert result.status in ("optimal", "feasible")
