@@ -56,7 +56,6 @@ def _make_valid_payload(job_id: str = "test-job") -> dict[str, Any]:
                 "coddis": "MAC0110",
                 "tiptur": "Graduacao",
                 "demand": 55,
-                "has_null_enrollment": False,
                 "is_freshmen": False,
                 "timeslot_ids": [0],
                 "preassigned_room_id": None,

@@ -53,7 +53,6 @@ class Group(BaseModel):
     coddis: str
     tiptur: str
     demand: int = Field(..., ge=0)
-    has_null_enrollment: bool
     is_freshmen: bool
     timeslot_ids: list[int]
     preassigned_room_id: int | None
