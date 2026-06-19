@@ -41,7 +41,6 @@ class TestScenarioTrivialNoConflict:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -50,7 +49,6 @@ class TestScenarioTrivialNoConflict:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[1],
                 preassigned_room_id=None,
@@ -79,7 +77,6 @@ class TestScenarioConflictForcesChoice:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -88,7 +85,6 @@ class TestScenarioConflictForcesChoice:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -118,7 +114,6 @@ class TestScenarioPreassignedRoom:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=2,
@@ -147,7 +142,6 @@ class TestScenarioBlockB:
                 id=101,
                 tiptur="Pos Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -172,7 +166,6 @@ class TestScenarioBlockB:
                 id=101,
                 tiptur="Pos Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -198,7 +191,6 @@ class TestScenarioBlockB:
                 id=101,
                 tiptur="Pos Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -227,7 +219,6 @@ class TestScenarioStrictCapacity:
                 id=101,
                 tiptur="Graduacao",
                 demand=50,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -254,7 +245,6 @@ class TestScenarioStrictCapacity:
                 id=101,
                 tiptur="Graduacao",
                 demand=50,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -283,7 +273,6 @@ class TestScenarioObjectiveUnassignedPenalty:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -292,7 +281,6 @@ class TestScenarioObjectiveUnassignedPenalty:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -327,7 +315,6 @@ class TestScenarioMultiTimeslotNoOverlap:
                 id=101,
                 tiptur="Graduacao",
                 demand=20,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0, 1],  # seg e qua
                 preassigned_room_id=None,
@@ -336,7 +323,6 @@ class TestScenarioMultiTimeslotNoOverlap:
                 id=102,
                 tiptur="Graduacao",
                 demand=20,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[2],  # qua (conflita com o timeslot 1 do grupo 101)
                 preassigned_room_id=None,
@@ -371,7 +357,6 @@ class TestScenarioInfeasible:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -380,7 +365,6 @@ class TestScenarioInfeasible:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -411,7 +395,6 @@ class TestScenarioSameTimeslotDifferentRooms:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -420,7 +403,6 @@ class TestScenarioSameTimeslotDifferentRooms:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -453,7 +435,6 @@ class TestScenarioSameTimeslotSameRoomInfeasible:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -462,7 +443,6 @@ class TestScenarioSameTimeslotSameRoomInfeasible:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -492,7 +472,6 @@ class TestScenarioContiguousTimeslotsSameRoom:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -501,7 +480,6 @@ class TestScenarioContiguousTimeslotsSameRoom:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[1],
                 preassigned_room_id=None,
@@ -536,7 +514,6 @@ class TestScenarioPiecewisePrefersComfortZoneOverClaustrophobia:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -573,7 +550,6 @@ class TestScenarioPiecewisePrefersComfortZoneOverWaste:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -608,7 +584,6 @@ class TestScenarioPiecewiseComfortZoneHasZeroCost:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -643,7 +618,6 @@ class TestScenarioPreassignedOverridesCapacity:
                 id=101,
                 tiptur="Graduacao",
                 demand=50,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -672,7 +646,6 @@ class TestScenarioPreassignedOverridesBlockB:
                 id=101,
                 tiptur="Pos Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -701,7 +674,6 @@ class TestScenarioPreassignedOverridesBlockA:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=True,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -733,7 +705,6 @@ class TestScenarioSplitClassBestEffort:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -742,7 +713,6 @@ class TestScenarioSplitClassBestEffort:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0, 1],
                 preassigned_room_id=None,
@@ -782,7 +752,6 @@ class TestScenarioSplitClassPenalty:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -791,7 +760,6 @@ class TestScenarioSplitClassPenalty:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0, 1],
                 preassigned_room_id=None,
@@ -822,7 +790,6 @@ class TestScenarioSplitClassPenalty:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -831,7 +798,6 @@ class TestScenarioSplitClassPenalty:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0, 1],
                 preassigned_room_id=None,
@@ -867,7 +833,6 @@ class TestScenarioNoOverlapWithFixed:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,  # fixado na sala 1
@@ -876,7 +841,6 @@ class TestScenarioNoOverlapWithFixed:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -909,7 +873,6 @@ class TestScenarioNoOverlapWithFixed:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -918,7 +881,6 @@ class TestScenarioNoOverlapWithFixed:
                 id=102,
                 tiptur="Graduacao",
                 demand=60,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0, 1],
                 preassigned_room_id=None,
@@ -952,7 +914,6 @@ class TestScenarioCohortSameRoom:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -962,7 +923,6 @@ class TestScenarioCohortSameRoom:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[1],
                 preassigned_room_id=None,
@@ -997,7 +957,6 @@ class TestScenarioCohortCanSplitWhenPenaltyZero:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1007,7 +966,6 @@ class TestScenarioCohortCanSplitWhenPenaltyZero:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1041,7 +999,6 @@ class TestScenarioCohortSplitsWhenNoSingleRoomFits:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1051,7 +1008,6 @@ class TestScenarioCohortSplitsWhenNoSingleRoomFits:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1084,7 +1040,6 @@ class TestScenarioCohortSplitPenaltyInObjective:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1094,7 +1049,6 @@ class TestScenarioCohortSplitPenaltyInObjective:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1126,7 +1080,6 @@ class TestScenarioCohortPriority:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1136,7 +1089,6 @@ class TestScenarioCohortPriority:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1166,7 +1118,6 @@ class TestScenarioBlockAFreshmenHardConstraint:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=True,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1191,7 +1142,6 @@ class TestScenarioBlockAFreshmenHardConstraint:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=True,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1216,7 +1166,6 @@ class TestScenarioBlockAFreshmenHardConstraint:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1246,7 +1195,6 @@ class TestScenarioUndergradPrefersBlockB:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1278,7 +1226,6 @@ class TestScenarioUndergradAcceptsBlockAWhenNoOption:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1311,7 +1258,6 @@ class TestScenarioPosGradPrefersBlockA:
                 id=101,
                 tiptur="Pos Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1346,7 +1292,6 @@ class TestScenarioCohortWithBlockedRoom:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,  # manual na sala bloqueada
@@ -1356,7 +1301,6 @@ class TestScenarioCohortWithBlockedRoom:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[1],
                 preassigned_room_id=None,  # automático
@@ -1390,7 +1334,6 @@ class TestScenarioCohortWithBlockedRoom:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,  # automático
@@ -1400,7 +1343,6 @@ class TestScenarioCohortWithBlockedRoom:
                 id=102,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[1],
                 preassigned_room_id=None,  # automático
@@ -1434,7 +1376,6 @@ class TestScenarioRoomNotAvailableForAuto:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=None,
@@ -1459,7 +1400,6 @@ class TestScenarioRoomNotAvailableForAuto:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0],
                 preassigned_room_id=1,
@@ -1485,7 +1425,6 @@ class TestScenarioRoomNotAvailableForAuto:
                 id=101,
                 tiptur="Graduacao",
                 demand=30,
-                has_null_enrollment=False,
                 is_freshmen=False,
                 timeslot_ids=[0, 1],
                 preassigned_room_id=None,
@@ -1498,3 +1437,65 @@ class TestScenarioRoomNotAvailableForAuto:
         assert result.status in ("optimal", "feasible")
         assert result.unassigned_groups == [101]
         assert result.suggestions == []
+
+
+class TestScenarioStrictCapacityMixedDobradinha:
+    """Issue #49: dobradinha 43+0 deve ser barrada por strict_capacity."""
+
+    def test_mixed_dobradinha_blocked_by_strict_capacity(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=30),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=43,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(strict_capacity=True)
+        result = run_solver(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == []
+        assert result.unassigned_groups == [101]
+
+
+class TestScenarioZeroDemandPrefersSmallestRoom:
+    """Issue #49: turma com demanda 0 é permitida, mas waste_penalty empurra para a menor sala."""
+
+    def test_zero_demand_group_prefers_smallest_room(self) -> None:
+        timeslots = [
+            TimeslotData(id=0, day="seg", start="08:00", end="09:40"),
+        ]
+        rooms = [
+            RoomData(id=1, name="A242", capacity=30),
+            RoomData(id=2, name="B09", capacity=10),
+        ]
+        groups = [
+            GroupData(
+                id=101,
+                tiptur="Graduacao",
+                demand=0,
+                is_freshmen=False,
+                timeslot_ids=[0],
+                preassigned_room_id=None,
+            ),
+        ]
+        config = _default_config(
+            strict_capacity=True,
+            waste_penalty=1.0,
+            comfort_zone_min_percent=0.0,
+            comfort_zone_max_percent=0.0,
+        )
+        result = run_solver(config, timeslots, rooms, groups)
+
+        assert result.status in ("optimal", "feasible")
+        assert result.allocations == [(101, 2)]
+        assert result.unassigned_groups == []

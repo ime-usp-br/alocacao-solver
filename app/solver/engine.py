@@ -58,7 +58,6 @@ class GroupData:
     id: int
     tiptur: str
     demand: int
-    has_null_enrollment: bool
     is_freshmen: bool
     timeslot_ids: list[int]
     preassigned_room_id: int | None
@@ -198,13 +197,12 @@ def run_solver(
     # -----------------------------------------------------------------------
     if config.strict_capacity:
         for g in groups:
-            if not g.has_null_enrollment:
-                for r in rooms:
-                    if g.preassigned_room_id == r.id:
-                        continue
-                    if r.capacity < g.demand:
-                        for ts_id in g.timeslot_ids:
-                            model.Add(Y[(g.id, ts_id, r.id)] == 0)
+            for r in rooms:
+                if g.preassigned_room_id == r.id:
+                    continue
+                if r.capacity < g.demand:
+                    for ts_id in g.timeslot_ids:
+                        model.Add(Y[(g.id, ts_id, r.id)] == 0)
 
     # -----------------------------------------------------------------------
     # Restrição 5: Regra do Bloco B

@@ -76,7 +76,6 @@ def _to_internal_groups(groups: list[Group]) -> list[GroupData]:
             id=g.id,
             tiptur=g.tiptur,
             demand=g.demand,
-            has_null_enrollment=g.has_null_enrollment,
             is_freshmen=g.is_freshmen,
             timeslot_ids=g.timeslot_ids,
             preassigned_room_id=g.preassigned_room_id,

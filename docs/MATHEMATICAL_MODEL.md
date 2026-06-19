@@ -44,7 +44,7 @@ em horários diferentes (*split class*).
     *   *Passo C:* Para cada sala `r`, aplicar `model.AddNoOverlap(intervalos_da_sala_r)`.
 
 6.  **Capacidade da Sala:**
-    *   Se `g.has_null_enrollment == False` e a sala não é a pré-alocada:
+    *   Se a sala não é a pré-alocada:
         *   Se `config.strict_capacity == True`, garantir `r.capacity >= g.demand`
             (`Y[g, t, r] == 0` caso contrário).
         *   Se `config.strict_capacity == False`, a restrição é relaxada e o
