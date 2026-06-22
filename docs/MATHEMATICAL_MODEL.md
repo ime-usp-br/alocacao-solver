@@ -143,11 +143,14 @@ contrato da API:
 
 *   **Turma 100% alocada em uma única sala** (todos os horários alocados e
     mesma sala para todos): entra em `allocations` como `{group_id, room_id}`.
-*   **Turma dividida entre salas** ou **parcialmente sem sala**: o `group_id`
-    entra em `unassigned_groups` e cada par `(timeslot_id, room_id)` alocado
-    vira uma entrada em `suggestions`.
-*   **Turma totalmente sem sala**: o `group_id` entra em `unassigned_groups` e
-    não gera `suggestions`.
+*   **Turma dividida entre salas, mas com todos os horários alocados**
+    (split class completo): o `group_id` entra em `unassigned_groups` e cada
+    par `(timeslot_id, room_id)` alocado vira uma entrada em `suggestions`.
+    O solver só emite essas sugestões quando consegue resolver todos os
+    horários do grupo, pois uma sugestão parcial não ajuda o Laravel a decidir
+    se vale a pena aceitar a quebra.
+*   **Turma parcialmente sem sala** ou **totalmente sem sala**: o `group_id`
+    entra em `unassigned_groups` e não gera `suggestions`.
 
 A prioridade absoluta de coortes é preservada porque o fator `P[g]` multiplica
  também a penalidade por horário sem sala.

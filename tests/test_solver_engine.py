@@ -723,12 +723,10 @@ class TestScenarioSplitClassBestEffort:
 
         assert result.status in ("optimal", "feasible")
         assert (101, 1) in result.allocations
-        # 102 não pode ter uma única sala para todos os horários, portanto vai
-        # para unassigned_groups com uma sugestão parcial no ter.
-        assert 102 in result.unassigned_groups
-        suggestions_for_102 = [s for s in result.suggestions if s[0] == 102]
-        assert (102, 1, 1) in suggestions_for_102
-        assert all(s[1] != 0 for s in suggestions_for_102)
+        # 102 não pode ter todos os seus horários alocados (sala 1 ocupada no
+        # seg pelo grupo 101). Sem sugestão parcial: só entra em unassigned.
+        assert result.unassigned_groups == [102]
+        assert result.suggestions == []
 
 
 class TestScenarioSplitClassPenalty:

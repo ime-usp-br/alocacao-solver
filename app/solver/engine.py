@@ -423,10 +423,17 @@ def run_solver(
 
         if fully_assigned and len(unique_rooms) == 1:
             allocations.append((g.id, unique_rooms.pop()))
-        else:
+        elif fully_assigned and len(unique_rooms) > 1:
+            # Split class completo: todos os horários alocados, mas em salas
+            # distintas. Emite sugestões para que o Laravel possa decidir se
+            # aceita a divisão.
             unassigned_groups.append(g.id)
             for ts_id, r_id in assigned_slots:
                 suggestions.append((g.id, ts_id, r_id))
+        else:
+            # Parcialmente sem sala: a sugestão é inútil sozinha, pois não
+            # resolve todos os horários do grupo. Deixa apenas como não alocado.
+            unassigned_groups.append(g.id)
 
     raw_objective = solver.ObjectiveValue() if hasattr(solver, "ObjectiveValue") else 0
     # Desescalar para retornar valor próximo ao original
