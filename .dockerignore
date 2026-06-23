@@ -1,0 +1,53 @@
+# Versionamento
+.git/
+.gitignore
+.github/
+
+# Arquivos locais de variaveis de ambiente (secrets)
+.env
+.env.*
+!.env.example
+
+# Documentacao e metadados do projeto
+docs/
+AGENTS.md
+README.md
+
+# Testes e scripts avulsos (nao sao necessarios em runtime)
+tests/
+scripts/
+
+# Caches e artefatos do Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# IDEs / editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Temporarios e plans do agente
+tmp/
+
+# Proprio Docker / Compose (nao pertencem a imagem)
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.prod.yml
