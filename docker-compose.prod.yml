@@ -37,6 +37,16 @@ services:
       redis:
         condition: service_healthy
     command: ["rq", "worker"]
+    # Limite de memória do work-horse: o CP-SAT pode crescer muito na busca.
+    # Sem limite, o OOM killer do kernel mata o processo (SIGKILL) e o RQ
+    # reporta "Work-horse terminated unexpectedly; waitpid returned None".
+    # O mem_limit inferior ao do host faz o container morrer de forma
+    # controlada e o restart policy recria o worker.
+    mem_limit: ${WORKER_MEM_LIMIT:-4g}
+    memswap_limit: ${WORKER_MEMSWAP_LIMIT:-4g}
+    environment:
+      - CP_SAT_NUM_SEARCH_WORKERS=${CP_SAT_NUM_SEARCH_WORKERS:-4}
+      - CP_SAT_MAX_MEMORY_MB=${CP_SAT_MAX_MEMORY_MB:-3500}
 
 volumes:
   redis_data:

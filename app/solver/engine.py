@@ -7,6 +7,7 @@ horários distintos (split class), eliminando a necessidade de dois passes.
 
 from __future__ import annotations
 
+import os
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -129,6 +130,22 @@ def run_solver(
     model = cp_model.CpModel()
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = config.time_limit_seconds
+
+    # ---------------------------------------------------------------------
+    # Controle de memória/paralelismo (knobs de deploy, via env)
+    # ---------------------------------------------------------------------
+    # num_search_workers padrão do CP-SAT = nº de cores (até 64). Cada worker
+    # clona o modelo + estado da busca, multiplicando o consumo de memória.
+    # Em servidores com muitos cores isso dispara OOM kill no work-horse do RQ.
+    # Limitamos a um valor seguro, configurável por ambiente.
+    num_workers = int(os.getenv("CP_SAT_NUM_SEARCH_WORKERS", "4"))
+    solver.parameters.num_search_workers = num_workers
+
+    # Teto de memória do CP-SAT: ao atingir, ele para a busca e retorna
+    # FEASIBLE em vez de crescer até o kernel matar o processo (SIGKILL).
+    max_memory_mb = os.getenv("CP_SAT_MAX_MEMORY_MB")
+    if max_memory_mb is not None and max_memory_mb.strip():
+        solver.parameters.max_memory_in_mb = int(max_memory_mb)
 
     # -----------------------------------------------------------------------
     # Variáveis de decisão
