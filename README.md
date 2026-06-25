@@ -24,6 +24,7 @@ Este projeto resolve o **University Course Timetabling Problem (UCTP)** utilizan
 2. **Two-Pass Solver (Sugestão de Quebras):** O motor roda um primeiro passe estrito (1 turma = 1 sala). Para as turmas que sobrarem, roda um segundo passe relaxado para sugerir *quebras de horários* nos buracos das salas, ajudando a comissão em semestres superlotados.
 3. **Morte Graciosa (Soft Stop):** A otimização pode ser abortada pelo usuário a qualquer momento. O solver é interrompido de forma limpa e devolve a melhor alocação encontrada até aquele segundo.
 4. **Resiliência de Rede:** Resultados são enviados proativamente via Webhook, mas também ficam salvos no Redis local (com TTL de 24h) garantindo uma rota de resgate (`Fallback`) caso o servidor do Laravel sofra instabilidade.
+5. **Sweeper de Jobs Órfãos:** Um processo independente (`sweeper`) detecta jobs cujo *work-horse* morreu abruptamente (SIGKILL/OOM kill) via *heartbeat* no Redis e notifica o Laravel com um webhook de erro, evitando jobs presos eternamente no estado "processando".
 
 ---
 
@@ -64,7 +65,7 @@ alocacao-solver/
 │   ├── api/                 # Endpoints FastAPI e Modelos Pydantic
 │   ├── core/                # Configurações globais (CORS, Redis URL)
 │   ├── solver/              # Coração Matemático (Engine OR-Tools, Constraints)
-│   └── worker/              # Configuração do RQ e Tarefas assíncronas
+│   └── worker/              # Configuração do RQ, Tarefas assíncronas e Sweeper de jobs órfãos
 ├── docs/                    # Documentação detalhada de regras e contratos
 ├── tests/                   # Suíte de testes automatizados (pytest)
 ├── pyproject.toml           # Configuração de dependências (Poetry)
@@ -92,7 +93,7 @@ Para aprofundar no funcionamento interno, consulte a pasta `docs/`:
 - Docker e Docker Compose instalados.
 - (Opcional) Python 3.14 e Poetry para desenvolvimento local sem Docker.
 
-### Via Docker (Recomendado)
+### Via Docker — Desenvolvimento
 
 1. Clone o repositório e acesse a pasta:
    ```bash
@@ -105,13 +106,41 @@ Para aprofundar no funcionamento interno, consulte a pasta `docs/`:
    cp .env.example .env
    ```
 
-3. Suba a infraestrutura completa (FastAPI, Worker RQ e Redis):
+3. Suba a infraestrutura completa (FastAPI, Worker RQ e Redis) com *bind mount* e *hot reload*:
    ```bash
-    docker compose up -d --build
+   docker compose up -d --build
    ```
 
 4. Acesse a documentação interativa Swagger (OpenAPI) gerada automaticamente pelo FastAPI:
    - **http://localhost:8001/docs**
+
+### Via Docker — Produção (`docker-compose.prod.yml`)
+
+O compose de produção difere do de desenvolvimento: imagem sem *bind mount* (código copiado no build), `restart: unless-stopped`, volume persistente para o Redis, limite de memória no *worker* e um serviço extra **`sweeper`**.
+
+1. Clone, configure e suba apontando o arquivo de produção:
+   ```bash
+   git clone https://github.com/ime-usp-br/alocacao-solver.git
+   cd alocacao-solver
+   cp .env.example .env
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+2. A API fica exposta na porta definida por `API_HOST_PORT` (padrão `8015` em homologação). Acesse o Swagger em:
+   - **http://<host>:${API_HOST_PORT}/docs**
+
+3. **Tuning de memória (importante):** O CP-SAT pode consumir muita RAM na busca e ser morto pelo *OOM killer* do kernel (`Work-horse terminated unexpectedly`). Ajuste no `.env` os limites abaixo — `CP_SAT_MAX_MEMORY_MB` deve ser **menor** que `WORKER_MEM_LIMIT`:
+   ```env
+   CP_SAT_NUM_SEARCH_WORKERS=4   # workers paralelos (cada um clona o modelo)
+   CP_SAT_MAX_MEMORY_MB=3500     # teto de RAM do CP-SAT (MB) → retorna FEASIBLE
+   WORKER_MEM_LIMIT=4g           # limite de memória do container worker
+   WORKER_MEMSWAP_LIMIT=4g
+   ```
+
+4. Os serviços iniciados são quatro: `redis`, `api`, `worker` e `sweeper`. Monitore com:
+   ```bash
+   docker compose -f docker-compose.prod.yml logs -f
+   ```
 
 > **Dica para Testes:** Para verificar o status `425 Too Early` (job ainda processando), envie um payload com muitos grupos/salas e `time_limit_seconds` alto (ex: 300), e imediatamente consulte `GET /api/v1/jobs/{job_id}/result`.
 
