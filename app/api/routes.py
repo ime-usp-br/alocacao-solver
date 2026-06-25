@@ -14,7 +14,7 @@ from app.api.schemas import (
     SolveRequest,
     StopResponse,
 )
-from app.worker.tasks import process_job
+from app.worker.tasks import on_job_failure, process_job
 
 app = FastAPI(title="Alocacao Solver API")
 
@@ -34,7 +34,12 @@ def solve(
     job_data["job_id"] = job_id
 
     queue = Queue(connection=redis_conn)
-    queue.enqueue(process_job, job_data, job_id=job_id)
+    queue.enqueue(
+        process_job,
+        job_data,
+        job_id=job_id,
+        on_failure=on_job_failure,
+    )
 
     return SolveAcceptedResponse(
         job_id=job_id,

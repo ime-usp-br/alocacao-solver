@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 import redis
+from rq.job import Job
 
 from app.api.schemas import (
     SolveErrorResponse,
@@ -29,6 +30,53 @@ from app.worker.processor import (
 REDIS_URL = __import__("os").getenv("REDIS_URL", "redis://localhost:6379/0")
 
 logger = logging.getLogger(__name__)
+
+
+def on_job_failure(job: Job, exc_string: str) -> None:
+    """
+    Callback de falha executado pelo RQ no processo principal do worker
+    (não no work-horse forkado).
+
+    É o safety-net para casos onde o work-horse morre abruptamente (ex.:
+    SIGKILL do OOM killer) e o try/except de ``process_job`` nunca roda.
+    Sem isto, o Laravel fica travado aguardando um webhook que nunca chega.
+    """
+    job_id = job.id
+    job_data = job.args[0] if job.args else {}
+    webhook_url = str(job_data.get("meta", {}).get("webhook_url", "")) or None
+
+    message = (
+        "Work-horse terminou inesperadamente (provável OOM kill do "
+        "container). A otimização foi abortada pelo sistema."
+    )
+    trace = exc_string or message
+
+    error_payload = SolveErrorResponse(
+        job_id=job_id,
+        status="error",
+        message=message,
+        trace=trace,
+    ).model_dump(mode="json")
+
+    redis_conn = redis.from_url(REDIS_URL)
+    try:
+        _save_result_to_redis(redis_conn, job_id, error_payload)
+    except Exception:
+        logger.exception(
+            "Falha ao persistir resultado de erro no Redis para job %s.",
+            job_id,
+        )
+
+    if webhook_url:
+        try:
+            _send_webhook(webhook_url, error_payload)
+        except httpx.RequestError:
+            logger.warning(
+                "Webhook de erro (on_failure) falhou para job %s.",
+                job_id,
+            )
+
+    redis_conn.close()
 
 
 def process_job(job_data: dict[str, Any]) -> None:
