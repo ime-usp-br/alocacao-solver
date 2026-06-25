@@ -34,10 +34,15 @@ def solve(
     job_data["job_id"] = job_id
 
     queue = Queue(connection=redis_conn)
+    # job_timeout deve cobrir o tempo do solver + build do modelo + I/O.
+    # Sem isto, o RQ aplica o default de 180s e mata o work-horse em
+    # 180+60=240s, antes do CP-SAT concluir (time_limit_seconds).
+    job_timeout = request.config.time_limit_seconds + 180
     queue.enqueue(
         process_job,
         job_data,
         job_id=job_id,
+        job_timeout=job_timeout,
         on_failure=on_job_failure,
     )
 

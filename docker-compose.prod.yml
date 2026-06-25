@@ -48,5 +48,20 @@ services:
       - CP_SAT_NUM_SEARCH_WORKERS=${CP_SAT_NUM_SEARCH_WORKERS:-4}
       - CP_SAT_MAX_MEMORY_MB=${CP_SAT_MAX_MEMORY_MB:-3500}
 
+  sweeper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alocacao-sweeper
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "app.worker.sweeper"]
+    environment:
+      - SWEEP_INTERVAL_SECONDS=${SWEEP_INTERVAL_SECONDS:-30}
+
 volumes:
   redis_data:

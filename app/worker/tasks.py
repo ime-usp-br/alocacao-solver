@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import traceback
 from typing import Any
 
@@ -29,54 +30,121 @@ from app.worker.processor import (
 
 REDIS_URL = __import__("os").getenv("REDIS_URL", "redis://localhost:6379/0")
 
+# TTL do heartbeat: se o work-horse morrer (SIGKILL/OOM), a chave expira
+# neste prazo e o sweeper detecta o job órfão.
+HEARTBEAT_TTL_SECONDS = 30
+HEARTBEAT_INTERVAL_SECONDS = 15
+# TTL do job_meta: deve sobreviver ao heartbeat para o sweeper poder ler
+# o webhook_url mesmo depois do work-horse morrer.
+JOB_META_TTL_SECONDS = 86400
+
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat
+# ---------------------------------------------------------------------------
+
+
+def _start_heartbeat(
+    redis_conn: redis.Redis,
+    job_id: str,
+    stop_event: threading.Event,
+) -> threading.Thread:
+    """
+    Inicia uma thread daemon que renova ``job_alive:{job_id}`` no Redis.
+
+    A thread morre junto com o work-horse (SIGKILL), fazendo a chave expirar
+    em ``HEARTBEAT_TTL_SECONDS`` — sinal para o sweeper de que o job morreu.
+    """
+
+    def _beat() -> None:
+        key = f"job_alive:{job_id}"
+        while not stop_event.is_set():
+            try:
+                redis_conn.setex(key, HEARTBEAT_TTL_SECONDS, "1")
+            except Exception:
+                logger.warning("Heartbeat falhou para job %s.", job_id)
+            stop_event.wait(HEARTBEAT_INTERVAL_SECONDS)
+
+    thread = threading.Thread(target=_beat, daemon=True, name=f"heartbeat-{job_id}")
+    thread.start()
+    return thread
+
+
+def _register_job_meta(
+    redis_conn: redis.Redis,
+    job_id: str,
+    webhook_url: str,
+    progress_webhook_url: str,
+) -> None:
+    """Persiste metadados do job para o sweeper poder notificar o Laravel."""
+    redis_conn.setex(
+        f"job_meta:{job_id}",
+        JOB_META_TTL_SECONDS,
+        json.dumps(
+            {
+                "webhook_url": webhook_url,
+                "progress_webhook_url": progress_webhook_url,
+            }
+        ),
+    )
+
+
+def _cleanup_job_meta(redis_conn: redis.Redis, job_id: str) -> None:
+    """Remove chaves de heartbeat/meta — chamada no finally do process_job."""
+    redis_conn.delete(f"job_alive:{job_id}", f"job_meta:{job_id}")
+
+
+# ---------------------------------------------------------------------------
+# Callback de falha do RQ (safety-net para exceções, não SIGKILL)
+# ---------------------------------------------------------------------------
 
 
 def on_job_failure(job: Job, exc_string: str) -> None:
     """
-    Callback de falha executado pelo RQ no processo principal do worker
-    (não no work-horse forkado).
+    Callback de falha executado pelo RQ.
 
-    É o safety-net para casos onde o work-horse morre abruptamente (ex.:
-    SIGKILL do OOM killer) e o try/except de ``process_job`` nunca roda.
-    Sem isto, o Laravel fica travado aguardando um webhook que nunca chega.
+    Roda para exceções Python normais (não capturadas).  **Não** roda para
+    SIGKILL/OOM — nesse caso o sweeper é quem notifica o Laravel.
+
+    É idempotente: se já existe um resultado no Redis (salvo pelo
+    ``process_job`` ou pelo sweeper), não faz nada.
     """
     job_id = job.id
-    job_data = job.args[0] if job.args else {}
-    webhook_url = str(job_data.get("meta", {}).get("webhook_url", "")) or None
-
-    message = (
-        "Work-horse terminou inesperadamente (provável OOM kill do "
-        "container). A otimização foi abortada pelo sistema."
-    )
-    trace = exc_string or message
-
-    error_payload = SolveErrorResponse(
-        job_id=job_id,
-        status="error",
-        message=message,
-        trace=trace,
-    ).model_dump(mode="json")
-
     redis_conn = redis.from_url(REDIS_URL)
+
     try:
+        if redis_conn.exists(f"result:{job_id}"):
+            return
+
+        job_data = job.args[0] if job.args else {}
+        webhook_url = str(job_data.get("meta", {}).get("webhook_url", "")) or None
+
+        error_payload = SolveErrorResponse(
+            job_id=job_id,
+            status="error",
+            message=str(exc_string),
+            trace=exc_string,
+        ).model_dump(mode="json")
+
         _save_result_to_redis(redis_conn, job_id, error_payload)
-    except Exception:
-        logger.exception(
-            "Falha ao persistir resultado de erro no Redis para job %s.",
-            job_id,
-        )
 
-    if webhook_url:
-        try:
-            _send_webhook(webhook_url, error_payload)
-        except httpx.RequestError:
-            logger.warning(
-                "Webhook de erro (on_failure) falhou para job %s.",
-                job_id,
-            )
+        if webhook_url:
+            try:
+                _send_webhook(webhook_url, error_payload)
+            except httpx.RequestError:
+                logger.warning(
+                    "Webhook de erro (on_failure) falhou para job %s.",
+                    job_id,
+                )
+    finally:
+        redis_conn.close()
 
-    redis_conn.close()
+
+# ---------------------------------------------------------------------------
+# Entrypoint do RQ
+# ---------------------------------------------------------------------------
 
 
 def process_job(job_data: dict[str, Any]) -> None:
@@ -86,6 +154,7 @@ def process_job(job_data: dict[str, Any]) -> None:
     """
     job_id = job_data.get("job_id", "unknown")
     redis_conn = redis.from_url(REDIS_URL)
+    stop_event = threading.Event()
 
     try:
         # ------------------------------------------------------------------
@@ -98,6 +167,12 @@ def process_job(job_data: dict[str, Any]) -> None:
         groups = _to_internal_groups(request.groups)
         webhook_url = str(request.meta.webhook_url)
         progress_webhook_url = str(request.meta.progress_webhook_url)
+
+        # ------------------------------------------------------------------
+        # Heartbeat + meta para o sweeper detectar morte abrupta (SIGKILL)
+        # ------------------------------------------------------------------
+        _register_job_meta(redis_conn, job_id, webhook_url, progress_webhook_url)
+        _start_heartbeat(redis_conn, job_id, stop_event)
 
         # ------------------------------------------------------------------
         # Solver unificado
@@ -168,4 +243,6 @@ def process_job(job_data: dict[str, Any]) -> None:
             )
 
     finally:
+        stop_event.set()
+        _cleanup_job_meta(redis_conn, job_id)
         redis_conn.close()
