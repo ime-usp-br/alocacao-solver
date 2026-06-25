@@ -77,7 +77,7 @@ def _handle_orphan(redis_conn: redis.Redis, job_id: str, meta_key: bytes | str) 
         try:
             meta = json.loads(raw_meta)
             webhook_url = str(meta.get("webhook_url", ""))
-        except json.JSONDecodeError, TypeError:
+        except (json.JSONDecodeError, TypeError):
             pass
 
     error_payload = SolveErrorResponse(
